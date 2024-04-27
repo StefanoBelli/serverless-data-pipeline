@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -59,25 +60,44 @@ func openCsv(filepath string, commaCh string) (Csv, error) {
 	return csv, nil
 }
 
-func (csv *Csv) readNextLine(m *map[string]string) error {
+type CsvEntry struct {
+	columnIndex int
+	columnName  string
+	value       string
+}
+
+func (csv Csv) readNextLine() ([]CsvEntry, error) {
 	entryLn, err := csv.reader.ReadString('\n')
 	if err != nil {
-		return CsvEofError{}
+		return nil, CsvEofError{}
 	}
 
 	entryLn = strings.TrimSuffix(entryLn, "\n")
 	colsVals := strings.Split(entryLn, csv.sepCh)
+	//fmt.Println(colsVals)
 	if len(colsVals) != len(csv.header) {
-		return InvalidCsvError{cause: errors.New("invalid num of cols")}
+		return nil, InvalidCsvError{cause: errors.New("invalid num of cols")}
 	}
 
+	var b bytes.Buffer
+	ents := []CsvEntry{}
 	for idx, elem := range colsVals {
-		(*m)[csv.header[idx]] = elem
+		b.WriteString(elem)
+		b.WriteString(" ")
+		ents = append(
+			ents,
+			CsvEntry{
+				columnIndex: idx,
+				columnName:  csv.header[idx],
+				value:       elem,
+			})
 	}
+	b.WriteString("\n")
+	print(b.String())
 
-	return nil
+	return ents, nil
 }
 
-func (csv *Csv) close() {
+func (csv Csv) close() {
 	csv.file.Close()
 }

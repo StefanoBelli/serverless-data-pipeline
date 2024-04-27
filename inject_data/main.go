@@ -422,6 +422,8 @@ func main() {
 
 	log.Printf("cachedir %s ok\n", programConfig.cacheDirPath)
 
+	var fullFilePath string
+
 	attempt := 1
 	for attempt <= 2 {
 
@@ -444,9 +446,11 @@ func main() {
 					}
 				} else {
 					log.Println("checksums match")
+					fullFilePath = myFilePath
 					break // SUCCESS
 				}
 			} else {
+				fullFilePath = myFilePath
 				break // SUCCESS
 			}
 		} else {
@@ -466,5 +470,22 @@ func main() {
 	if attempt > 2 {
 		log.Println("max attempts reached")
 		log.Fatalln("terminating now")
+	}
+
+	csv, err := openCsv(fullFilePath, programConfig.csvSep)
+	if err != nil {
+		log.Fatalf("opencsv failed: %s\n", err.Error())
+	}
+
+	defer csv.close()
+
+	for _, err := csv.readNextLine(); err == nil; _, err = csv.readNextLine() {
+		/*x := ""
+		for i, _ := range e {
+			x = e[0].value + " "
+			i++
+		}
+		x += "\n"
+		os.Stdout.Write([]byte(x))*/
 	}
 }
