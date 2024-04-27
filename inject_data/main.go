@@ -3,14 +3,22 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
+
+const DEFAULT_API_ENDPOINT = "API gateway endpoint"
+
+const DEFAULT_EVERY_MS = "3000"
+const DEFAULT_DIRTY_DATA = "true"
+const DEFAULT_DIRTY_THRESHOLD = "0.8"
 
 const DEFAULT_CACHEDIR_RELNAME = ".sdcc_dinj_cache/"
 const DEFAULT_FILE_NAME = "nyc_yellowtaxis_feb2024.csv"
@@ -28,6 +36,10 @@ type Config struct {
 	downloadUrl  string
 	skipChecksum bool
 	skipDownload bool
+	dirtyThresh  float32
+	dirtyData    bool
+	everyMs      int
+	apiEndpoint  string
 }
 
 type Argument struct {
@@ -35,6 +47,7 @@ type Argument struct {
 	description string
 	needsValue  bool
 	handler     func(string)
+	defValue    string
 }
 
 var programConfig Config
@@ -43,11 +56,12 @@ var programArguments []Argument = []Argument{
 		name:        "--checksum",
 		description: "Enable custom checksum value verification (SHA256)",
 		needsValue:  true,
+		defValue:    EXPECTED_FILE_SHA256_CHECKSUM,
 		handler: func(val string) {
 			programConfig.checksum = val
 			programConfig.skipChecksum = false
 			if len(programConfig.checksum) != 64 {
-				log.Fatalf("SHA256 checksum strings " +
+				log.Fatalf("SHA256 checksum hex-encoded strings " +
 					"(base64 encoded) must be exactly 64 char long")
 			}
 		},
@@ -73,6 +87,7 @@ var programArguments []Argument = []Argument{
 		name:        "--filename",
 		description: "Set custom relative (to cachedir) filename to use",
 		needsValue:  true,
+		defValue:    DEFAULT_FILE_NAME,
 		handler: func(val string) {
 			programConfig.filename = val
 		},
@@ -89,6 +104,7 @@ var programArguments []Argument = []Argument{
 		name:        "--cachedir",
 		description: "Set custom cache directory",
 		needsValue:  true,
+		defValue:    DEFAULT_CACHEDIR_RELNAME,
 		handler: func(val string) {
 			programConfig.cacheDirPath = val
 		},
@@ -105,6 +121,7 @@ var programArguments []Argument = []Argument{
 		name:        "--download",
 		description: "Enable downloading required file by custom URL",
 		needsValue:  true,
+		defValue:    DEFAULT_URL,
 		handler: func(val string) {
 			programConfig.downloadUrl = val
 			programConfig.skipDownload = false
@@ -127,6 +144,86 @@ var programArguments []Argument = []Argument{
 			programConfig.skipDownload = true
 		},
 	},
+	{
+		name:        "--every-ms",
+		description: "Generate an entry every X ms",
+		needsValue:  true,
+		defValue:    DEFAULT_EVERY_MS,
+		handler: func(value string) {
+			evMs, err := strconv.ParseInt(value, 10, 32)
+			if err != nil {
+				log.Fatalln("unable to parse int")
+			}
+
+			programConfig.everyMs = int(evMs)
+		},
+	},
+	{
+		name:        "--every-ms-default",
+		description: "Generate an entry every default ms delay",
+		needsValue:  false,
+		handler: func(value string) {
+			evMs, _ := strconv.ParseInt(DEFAULT_EVERY_MS, 10, 32)
+			programConfig.everyMs = int(evMs)
+		},
+	},
+	{
+		name:        "--dirty-data",
+		description: "Enable generation of dirty data (random)",
+		needsValue:  false,
+		defValue:    DEFAULT_DIRTY_DATA,
+		handler: func(_ string) {
+			programConfig.dirtyData = true
+		},
+	},
+	{
+		name:        "--no-dirty-data",
+		description: "Disable generation of dirty data (random)",
+		needsValue:  false,
+		handler: func(_ string) {
+			programConfig.dirtyData = false
+		},
+	},
+	{
+		name:        "--dirty-thresh",
+		description: "Set thresh. to dirty data. Check against PRNG-generated num in (0,1).",
+		needsValue:  true,
+		defValue:    DEFAULT_DIRTY_THRESHOLD,
+		handler: func(value string) {
+			dThr, err := strconv.ParseFloat(value, 32)
+			if err != nil {
+				log.Fatalln("unable to parse float")
+			}
+
+			programConfig.dirtyThresh = float32(dThr)
+		},
+	},
+	{
+		name:        "--dirty-thresh-default",
+		description: "Set thresh. to dirty data (default). Check against PRNG-generated num in (0,1).",
+		needsValue:  false,
+		handler: func(value string) {
+			dThr, _ := strconv.ParseFloat(DEFAULT_DIRTY_THRESHOLD, 32)
+			programConfig.dirtyThresh = float32(dThr)
+		},
+	},
+	{
+		name:        "--api-endpoint",
+		description: "Set API gateway endpoint to send data to",
+		needsValue:  true,
+		defValue:    DEFAULT_API_ENDPOINT,
+		handler: func(value string) {
+			programConfig.apiEndpoint = value
+		},
+	},
+	{
+		name:        "--api-endpoint-default",
+		description: "Set default API gateway endpoint to send data to",
+		needsValue:  false,
+		handler: func(value string) {
+			programConfig.apiEndpoint = DEFAULT_API_ENDPOINT
+		},
+	},
 }
 
 func getFwdPathSep(path string) string {
@@ -143,22 +240,33 @@ func getHomeDir() string {
 }
 
 func printHelpAndExit() {
-	log.Printf("default filename: %s\n", programConfig.filename)
-	log.Printf("default cachedir: %s\n", programConfig.cacheDirPath)
-	log.Printf("default checksum value: %s\n", programConfig.checksum)
-	log.Printf("default download url: %s\n", programConfig.downloadUrl)
-	log.Printf("default checksum validate: %t\n", !programConfig.skipChecksum)
-	log.Printf("default download file if missing: %t\n", !programConfig.skipDownload)
-
 	for _, arg := range programArguments {
-		log.Printf(" * %s - %s, value required: %t\n",
+		fmt.Printf(" * %s - %s, needs value: %t\n",
 			arg.name, arg.description, arg.needsValue)
+		if arg.defValue != "" {
+			fmt.Printf("  \tdefault: %s\n", arg.defValue)
+		}
 	}
 
 	os.Exit(0)
 }
 
-func configureProgramByArgs() {
+func loadDefaults() {
+	dirtyData, err := strconv.ParseBool(DEFAULT_DIRTY_DATA)
+	if err != nil {
+		log.Fatalln("unable to parse bool (loading defaults)")
+	}
+
+	dirtyThresh, err := strconv.ParseFloat(DEFAULT_DIRTY_THRESHOLD, 32)
+	if err != nil {
+		log.Fatalln("unable to parse float (loading defaults)")
+	}
+
+	evMs, err := strconv.ParseInt(DEFAULT_EVERY_MS, 10, 32)
+	if err != nil {
+		log.Fatalln("unable to parse int (loading defaults)")
+	}
+
 	dflCacheDir := getHomeDir() + "/" + DEFAULT_CACHEDIR_RELNAME
 
 	programConfig.filename = DEFAULT_FILE_NAME
@@ -167,6 +275,13 @@ func configureProgramByArgs() {
 	programConfig.downloadUrl = DEFAULT_URL
 	programConfig.skipChecksum = DEFAULT_SKIP_CHECKSUM
 	programConfig.skipDownload = DEFAULT_SKIP_DOWNLOAD
+	programConfig.apiEndpoint = DEFAULT_API_ENDPOINT
+	programConfig.dirtyData = dirtyData
+	programConfig.dirtyThresh = float32(dirtyThresh)
+	programConfig.everyMs = int(evMs)
+}
+func configureProgramByArgs() {
+	loadDefaults()
 
 	args := os.Args
 
