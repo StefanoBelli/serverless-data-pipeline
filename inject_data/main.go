@@ -1,9 +1,15 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"path"
+	"path/filepath"
+	"strings"
 )
 
 const DEFAULT_CACHEDIR_RELNAME = ".sdcc_dinj_cache/"
@@ -35,7 +41,7 @@ var programConfig Config
 var programArguments []Argument = []Argument{
 	{
 		name:        "--checksum",
-		description: "Enable custom checksum verification",
+		description: "Enable custom checksum value verification (SHA256)",
 		needsValue:  true,
 		handler: func(val string) {
 			programConfig.checksum = val
@@ -56,7 +62,7 @@ var programArguments []Argument = []Argument{
 	},
 	{
 		name:        "--checksum-default",
-		description: "Enable default checksum verification",
+		description: "Enable default checksum value verification (SHA256)",
 		needsValue:  false,
 		handler: func(_ string) {
 			programConfig.checksum = EXPECTED_FILE_SHA256_CHECKSUM
@@ -68,7 +74,7 @@ var programArguments []Argument = []Argument{
 		description: "Set custom relative (to cachedir) filename to use",
 		needsValue:  true,
 		handler: func(val string) {
-			programConfig.filename = path.Clean(val)
+			programConfig.filename = val
 		},
 	},
 	{
@@ -84,7 +90,7 @@ var programArguments []Argument = []Argument{
 		description: "Set custom cache directory",
 		needsValue:  true,
 		handler: func(val string) {
-			programConfig.cacheDirPath = path.Clean(val)
+			programConfig.cacheDirPath = val
 		},
 	},
 	{
@@ -123,6 +129,10 @@ var programArguments []Argument = []Argument{
 	},
 }
 
+func getFwdPathSep(path string) string {
+	return strings.ReplaceAll(path, "\\", "/")
+}
+
 func getHomeDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -133,29 +143,18 @@ func getHomeDir() string {
 }
 
 func printHelpAndExit() {
-	log.Printf(
-		"default filename:\t%s\n"+
-			"default cachedir:\t%s\n"+
-			"default checksum value:\t%s\n"+
-			"default download url:\t%s\n"+
-			"default checksum validate:\t%t\n"+
-			"default download file if missing:\t%t\n",
-		programConfig.filename,
-		programConfig.cacheDirPath,
-		programConfig.checksum,
-		programConfig.downloadUrl,
-		!programConfig.skipChecksum,
-		!programConfig.skipDownload)
+	log.Printf("default filename: %s\n", programConfig.filename)
+	log.Printf("default cachedir: %s\n", programConfig.cacheDirPath)
+	log.Printf("default checksum value: %s\n", programConfig.checksum)
+	log.Printf("default download url: %s\n", programConfig.downloadUrl)
+	log.Printf("default checksum validate: %t\n", !programConfig.skipChecksum)
+	log.Printf("default download file if missing: %t\n", !programConfig.skipDownload)
 
 	for _, arg := range programArguments {
-		needsValueToStr := "no"
-		if arg.needsValue {
-			needsValueToStr = "yes"
-		}
-
-		log.Printf(" * %s:\tdesc: %s\tneedsValue: %s\n",
-			arg.name, arg.description, needsValueToStr)
+		log.Printf(" * %s - %s, value required: %t\n",
+			arg.name, arg.description, arg.needsValue)
 	}
+
 	os.Exit(0)
 }
 
@@ -163,7 +162,7 @@ func configureProgramByArgs() {
 	dflCacheDir := getHomeDir() + "/" + DEFAULT_CACHEDIR_RELNAME
 
 	programConfig.filename = DEFAULT_FILE_NAME
-	programConfig.cacheDirPath = path.Clean(dflCacheDir)
+	programConfig.cacheDirPath = dflCacheDir
 	programConfig.checksum = EXPECTED_FILE_SHA256_CHECKSUM
 	programConfig.downloadUrl = DEFAULT_URL
 	programConfig.skipChecksum = DEFAULT_SKIP_CHECKSUM
@@ -177,7 +176,7 @@ func configureProgramByArgs() {
 		}
 	}
 
-	for i := 0; i < len(args); i++ {
+	for i := 1; i < len(args); i++ {
 		matchingArgFound := false
 		for _, arg := range programArguments {
 			if args[i] == arg.name {
@@ -196,11 +195,131 @@ func configureProgramByArgs() {
 			log.Printf("ignoring unknown cmdline opt %s\n", args[i])
 		}
 	}
+
+	uniformConfigParameters()
+}
+
+func uniformConfigParameters() {
+	programConfig.checksum = strings.ToUpper(programConfig.checksum)
+	programConfig.cacheDirPath, _ = filepath.Abs(programConfig.cacheDirPath)
+	programConfig.filename = getFwdPathSep(programConfig.filename)
+	programConfig.cacheDirPath = getFwdPathSep(programConfig.cacheDirPath)
+}
+
+func checkFile() (string, bool) {
+	fpath := programConfig.cacheDirPath + "/" + programConfig.filename
+
+	if filepath.IsAbs(programConfig.filename) {
+		dir, _ := path.Split(programConfig.filename)
+		if path.Clean(dir) != programConfig.cacheDirPath {
+			log.Fatalln("basedir is different from cachedir")
+		}
+
+		fpath = programConfig.filename
+	} else if strings.Contains(programConfig.filename, "/") {
+		log.Println("if filename value is something like \"./file.txt\" or \".\\file.txt\"")
+		log.Println("then try replacing it like \"file.txt\" (basic path checks implemented)")
+		log.Fatalln("no subdirectories in cachedir allowed")
+	}
+
+	log.Printf("checking file %s...", fpath)
+
+	_, err := os.Stat(fpath)
+
+	return fpath, !os.IsNotExist(err)
+}
+
+func sha256Checksum(path string) string {
+	fileBytes, err := os.ReadFile(path)
+	if err != nil {
+		return "failfailfail"
+	}
+
+	hasher := sha256.New()
+	if _, err := hasher.Write(fileBytes); err != nil {
+		return "failfailfail"
+	}
+
+	hexStr := hex.EncodeToString(hasher.Sum(nil))
+	return strings.ToUpper(hexStr)
+}
+
+func fileDownload(path string) {
+	res, err := http.Get(programConfig.downloadUrl)
+	if err != nil {
+		log.Fatalf("unable to perform HTTP GET: %s\n",
+			err.Error())
+	}
+
+	body := res.Body
+	defer body.Close()
+
+	bodyBytes, err := io.ReadAll(body)
+	if err != nil {
+		log.Fatalf("unable to read body buffer: %s\n",
+			err.Error())
+	}
+
+	if err = os.WriteFile(path, bodyBytes, 0); err != nil {
+		log.Fatalf("unable to write file: %s\n",
+			err.Error())
+	}
 }
 
 func main() {
-	//--filename <filename> or --filename-default
-	//--cachedir <cachedir> or --cachedir-default
-	//--skip-checksum or --checksum-default or --checksum <custom_hexascii_sha256>
-	//--skip-download or --download-default or --download <url>
+	configureProgramByArgs()
+
+	err := os.MkdirAll(programConfig.cacheDirPath, 0)
+	if err != nil {
+		log.Fatalf("unable to create directory %s: %s\n",
+			programConfig.cacheDirPath, err.Error())
+	}
+
+	log.Printf("cachedir %s ok\n", programConfig.cacheDirPath)
+
+	attempt := 1
+	for attempt <= 2 {
+
+		myFilePath, myFileExists := checkFile()
+
+		if myFileExists {
+			if !programConfig.skipChecksum {
+				if sha256Checksum(myFilePath) != programConfig.checksum {
+					log.Println("user requested checksum verification")
+					log.Println("checksums do not match")
+					if !programConfig.skipDownload {
+						if os.Remove(myFilePath) != nil {
+							log.Fatalf("unable to remove file %s: %s\n",
+								myFilePath, err.Error())
+						}
+
+						attempt++
+					} else {
+						log.Fatalln("terminating now") //EXITING
+					}
+				} else {
+					log.Println("checksums match")
+					break // SUCCESS
+				}
+			} else {
+				break // SUCCESS
+			}
+		} else {
+			if programConfig.skipDownload {
+				log.Println("user requested not to download anything")
+				log.Fatalln("terminating now")
+			} else {
+				log.Println("downloading file...")
+				fileDownload(myFilePath)
+				if programConfig.skipChecksum {
+					attempt++
+				}
+			}
+		}
+	}
+
+	if attempt > 2 {
+		log.Println("max attempts reached")
+		log.Fatalln("terminating now")
+	}
 }
