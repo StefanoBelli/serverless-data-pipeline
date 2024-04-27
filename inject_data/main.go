@@ -14,6 +14,8 @@ import (
 	"strings"
 )
 
+const DEFAULT_CSV_SEPARATOR = ","
+
 const DEFAULT_API_ENDPOINT = "API gateway endpoint"
 
 const DEFAULT_EVERY_MS = "3000"
@@ -40,6 +42,7 @@ type Config struct {
 	dirtyData    bool
 	everyMs      int
 	apiEndpoint  string
+	csvSep       string
 }
 
 type Argument struct {
@@ -224,6 +227,27 @@ var programArguments []Argument = []Argument{
 			programConfig.apiEndpoint = DEFAULT_API_ENDPOINT
 		},
 	},
+	{
+		name:        "--csv-separator",
+		description: "Set custom csv column separator",
+		needsValue:  true,
+		defValue:    DEFAULT_CSV_SEPARATOR,
+		handler: func(value string) {
+			if len(value) != 1 {
+				log.Fatalf("%s is not a valid separator - must be 1 chr long\n",
+					value)
+			}
+			programConfig.csvSep = value
+		},
+	},
+	{
+		name:        "--csv-separator-default",
+		description: "Set default csv column separator",
+		needsValue:  false,
+		handler: func(value string) {
+			programConfig.csvSep = DEFAULT_CSV_SEPARATOR
+		},
+	},
 }
 
 func getFwdPathSep(path string) string {
@@ -279,6 +303,12 @@ func loadDefaults() {
 	programConfig.dirtyData = dirtyData
 	programConfig.dirtyThresh = float32(dirtyThresh)
 	programConfig.everyMs = int(evMs)
+
+	programConfig.csvSep = DEFAULT_CSV_SEPARATOR
+	if len(programConfig.csvSep) != 1 {
+		log.Fatalf("%s is not a valid separator - must be 1 chr long\n",
+			programConfig.csvSep)
+	}
 }
 func configureProgramByArgs() {
 	loadDefaults()
