@@ -405,7 +405,7 @@ func fileDownload(path string) {
 			err.Error())
 	}
 
-	if err = os.WriteFile(path, bodyBytes, 0); err != nil {
+	if err = os.WriteFile(path, bodyBytes, 0644); err != nil {
 		log.Fatalf("unable to write file: %s\n",
 			err.Error())
 	}
@@ -414,7 +414,7 @@ func fileDownload(path string) {
 func main() {
 	configureProgramByArgs()
 
-	err := os.MkdirAll(programConfig.cacheDirPath, 0)
+	err := os.MkdirAll(programConfig.cacheDirPath, 0700)
 	if err != nil {
 		log.Fatalf("unable to create directory %s: %s\n",
 			programConfig.cacheDirPath, err.Error())
