@@ -479,13 +479,10 @@ func main() {
 
 	defer csv.close()
 
-	for _, err := csv.readNextLine(); err == nil; _, err = csv.readNextLine() {
-		/*x := ""
-		for i, _ := range e {
-			x = e[0].value + " "
-			i++
+	for e, err := csv.readNextLine(); err == nil; e, err = csv.readNextLine() {
+		fmt.Println("========LINE BEGINS========")
+		for _, k := range e {
+			fmt.Printf("\t%d) %s = %s\n", k.columnIndex, k.columnName, k.value)
 		}
-		x += "\n"
-		os.Stdout.Write([]byte(x))*/
 	}
 }

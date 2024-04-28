@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -45,7 +44,7 @@ func openCsv(filepath string, commaCh string) (Csv, error) {
 		return csv, InvalidCsvError{cause: err}
 	}
 
-	hdrLn = strings.TrimSuffix(hdrLn, "\n")
+	hdrLn = strings.TrimRight(hdrLn, "\r\n")
 
 	csv.header = strings.Split(hdrLn, commaCh)
 
@@ -72,18 +71,14 @@ func (csv Csv) readNextLine() ([]CsvEntry, error) {
 		return nil, CsvEofError{}
 	}
 
-	entryLn = strings.TrimSuffix(entryLn, "\n")
+	entryLn = strings.TrimRight(entryLn, "\r\n")
 	colsVals := strings.Split(entryLn, csv.sepCh)
-	//fmt.Println(colsVals)
 	if len(colsVals) != len(csv.header) {
 		return nil, InvalidCsvError{cause: errors.New("invalid num of cols")}
 	}
 
-	var b bytes.Buffer
 	ents := []CsvEntry{}
 	for idx, elem := range colsVals {
-		b.WriteString(elem)
-		b.WriteString(" ")
 		ents = append(
 			ents,
 			CsvEntry{
@@ -92,9 +87,6 @@ func (csv Csv) readNextLine() ([]CsvEntry, error) {
 				value:       elem,
 			})
 	}
-	b.WriteString("\n")
-	print(b.String())
-
 	return ents, nil
 }
 
