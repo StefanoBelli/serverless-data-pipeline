@@ -38,11 +38,20 @@ type Config struct {
 	downloadUrl  string
 	skipChecksum bool
 	skipDownload bool
-	dirtyThresh  float32
-	dirtyData    bool
-	everyMs      int
-	apiEndpoint  string
-	csvSep       string
+
+	generator struct {
+		dirtyThresh float32
+		dirtyData   bool
+		everyMs     int
+	}
+
+	injector struct {
+		apiEndpoint string
+	}
+
+	csv struct {
+		separator string
+	}
 }
 
 type Argument struct {
@@ -158,7 +167,7 @@ var programArguments []Argument = []Argument{
 				log.Fatalln("unable to parse int")
 			}
 
-			programConfig.everyMs = int(evMs)
+			programConfig.generator.everyMs = int(evMs)
 		},
 	},
 	{
@@ -167,7 +176,7 @@ var programArguments []Argument = []Argument{
 		needsValue:  false,
 		handler: func(value string) {
 			evMs, _ := strconv.ParseInt(DEFAULT_EVERY_MS, 10, 32)
-			programConfig.everyMs = int(evMs)
+			programConfig.generator.everyMs = int(evMs)
 		},
 	},
 	{
@@ -176,7 +185,7 @@ var programArguments []Argument = []Argument{
 		needsValue:  false,
 		defValue:    DEFAULT_DIRTY_DATA,
 		handler: func(_ string) {
-			programConfig.dirtyData = true
+			programConfig.generator.dirtyData = true
 		},
 	},
 	{
@@ -184,7 +193,7 @@ var programArguments []Argument = []Argument{
 		description: "Disable generation of dirty data (random)",
 		needsValue:  false,
 		handler: func(_ string) {
-			programConfig.dirtyData = false
+			programConfig.generator.dirtyData = false
 		},
 	},
 	{
@@ -198,7 +207,7 @@ var programArguments []Argument = []Argument{
 				log.Fatalln("unable to parse float")
 			}
 
-			programConfig.dirtyThresh = float32(dThr)
+			programConfig.generator.dirtyThresh = float32(dThr)
 		},
 	},
 	{
@@ -207,7 +216,7 @@ var programArguments []Argument = []Argument{
 		needsValue:  false,
 		handler: func(value string) {
 			dThr, _ := strconv.ParseFloat(DEFAULT_DIRTY_THRESHOLD, 32)
-			programConfig.dirtyThresh = float32(dThr)
+			programConfig.generator.dirtyThresh = float32(dThr)
 		},
 	},
 	{
@@ -216,7 +225,7 @@ var programArguments []Argument = []Argument{
 		needsValue:  true,
 		defValue:    DEFAULT_API_ENDPOINT,
 		handler: func(value string) {
-			programConfig.apiEndpoint = value
+			programConfig.injector.apiEndpoint = value
 		},
 	},
 	{
@@ -224,7 +233,7 @@ var programArguments []Argument = []Argument{
 		description: "Set default API gateway endpoint to send data to",
 		needsValue:  false,
 		handler: func(value string) {
-			programConfig.apiEndpoint = DEFAULT_API_ENDPOINT
+			programConfig.injector.apiEndpoint = DEFAULT_API_ENDPOINT
 		},
 	},
 	{
@@ -237,7 +246,7 @@ var programArguments []Argument = []Argument{
 				log.Fatalf("%s is not a valid separator - must be 1 chr long\n",
 					value)
 			}
-			programConfig.csvSep = value
+			programConfig.csv.separator = value
 		},
 	},
 	{
@@ -245,7 +254,7 @@ var programArguments []Argument = []Argument{
 		description: "Set default csv column separator",
 		needsValue:  false,
 		handler: func(value string) {
-			programConfig.csvSep = DEFAULT_CSV_SEPARATOR
+			programConfig.csv.separator = DEFAULT_CSV_SEPARATOR
 		},
 	},
 }
@@ -299,15 +308,15 @@ func loadDefaults() {
 	programConfig.downloadUrl = DEFAULT_URL
 	programConfig.skipChecksum = DEFAULT_SKIP_CHECKSUM
 	programConfig.skipDownload = DEFAULT_SKIP_DOWNLOAD
-	programConfig.apiEndpoint = DEFAULT_API_ENDPOINT
-	programConfig.dirtyData = dirtyData
-	programConfig.dirtyThresh = float32(dirtyThresh)
-	programConfig.everyMs = int(evMs)
+	programConfig.injector.apiEndpoint = DEFAULT_API_ENDPOINT
+	programConfig.generator.dirtyData = dirtyData
+	programConfig.generator.dirtyThresh = float32(dirtyThresh)
+	programConfig.generator.everyMs = int(evMs)
 
-	programConfig.csvSep = DEFAULT_CSV_SEPARATOR
-	if len(programConfig.csvSep) != 1 {
+	programConfig.csv.separator = DEFAULT_CSV_SEPARATOR
+	if len(programConfig.csv.separator) != 1 {
 		log.Fatalf("%s is not a valid separator - must be 1 chr long\n",
-			programConfig.csvSep)
+			programConfig.csv.separator)
 	}
 }
 func configureProgramByArgs() {
@@ -472,17 +481,9 @@ func main() {
 		log.Fatalln("terminating now")
 	}
 
-	csv, err := openCsv(fullFilePath, programConfig.csvSep)
-	if err != nil {
-		log.Fatalf("opencsv failed: %s\n", err.Error())
-	}
-
-	defer csv.close()
-
-	for e, err := csv.readNextLine(); err == nil; e, err = csv.readNextLine() {
-		fmt.Println("========LINE BEGINS========")
-		for _, k := range e {
-			fmt.Printf("\t%d) %s = %s\n", k.columnIndex, k.columnName, k.value)
-		}
+	injectErr := inject(fullFilePath)
+	if injectErr != nil {
+		log.Fatalf("injector got an error: %s\n",
+			injectErr.Error())
 	}
 }
