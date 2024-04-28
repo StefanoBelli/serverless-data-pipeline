@@ -31,6 +31,7 @@ func (e CsvEofError) Error() string {
 
 func openCsv(filepath string, commaCh string) (Csv, error) {
 	csv := Csv{}
+
 	f, err := os.Open(filepath)
 	if err != nil {
 		return csv, err
@@ -40,7 +41,7 @@ func openCsv(filepath string, commaCh string) (Csv, error) {
 
 	hdrLn, err := csv.reader.ReadString('\n')
 	if err != nil {
-		f.Close()
+		csv.close()
 		return csv, InvalidCsvError{cause: err}
 	}
 
@@ -49,7 +50,7 @@ func openCsv(filepath string, commaCh string) (Csv, error) {
 	csv.header = strings.Split(hdrLn, commaCh)
 
 	if len(csv.header) == 0 {
-		f.Close()
+		csv.close()
 		return csv, InvalidCsvError{errors.New("no columns")}
 	}
 
@@ -68,12 +69,14 @@ type CsvEntry struct {
 func (csv Csv) readNextLine() ([]CsvEntry, error) {
 	entryLn, err := csv.reader.ReadString('\n')
 	if err != nil {
+		csv.close()
 		return nil, CsvEofError{}
 	}
 
 	entryLn = strings.TrimRight(entryLn, "\r\n")
 	colsVals := strings.Split(entryLn, csv.sepCh)
 	if len(colsVals) != len(csv.header) {
+		csv.close()
 		return nil, InvalidCsvError{cause: errors.New("invalid num of cols")}
 	}
 
@@ -87,9 +90,14 @@ func (csv Csv) readNextLine() ([]CsvEntry, error) {
 				value:       elem,
 			})
 	}
+
 	return ents, nil
 }
 
 func (csv Csv) close() {
 	csv.file.Close()
+	csv.reader = nil
+	csv.file = nil
+	csv.header = []string{}
+	csv.sepCh = ""
 }
