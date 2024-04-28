@@ -63,7 +63,7 @@ type Argument struct {
 }
 
 var programConfig Config
-var programArguments []Argument = []Argument{
+var programArguments = []Argument{
 	{
 		name:        "--checksum",
 		description: "Enable custom checksum value verification (SHA256)",
