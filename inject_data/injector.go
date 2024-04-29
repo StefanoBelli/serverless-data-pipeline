@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"math/rand"
 	"time"
 )
@@ -241,15 +242,30 @@ var noiseGens = []NoiseGenerator{
 }
 
 func inject(path string) error {
+	apiEndpoint := programConfig.injector.apiEndpoint
+
 	var genChans GeneratorChannels
+
 	genChans.outEntry = make(chan string)
 	genChans.outErr = make(chan error)
 
 	go generate(path, noiseGens, genChans)
 
-	for entry := range genChans.outEntry {
-		fmt.Println(entry) //TODO later replace by HTTP GET to endpoint
+	log.Printf("Injecting to API endpoint: %s\n",
+		apiEndpoint)
+
+	fmt.Printf(" --> Injected 0 entries\r")
+
+	i := 1
+	for range genChans.outEntry {
+		//fmt.Println(entry) //TODO later replace by HTTP GET to endpoint
+		fmt.Printf(" --> Injected %d entries\r", i)
+		i++
 	}
+
+	fmt.Println()
+
+	log.Println("Done")
 
 	myErr := <-genChans.outErr
 	close(genChans.outErr)
