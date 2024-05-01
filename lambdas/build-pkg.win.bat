@@ -44,17 +44,18 @@ for /l %%i in (!start!,1,!end!) do (
 
     cd !lambdas[%%i]!
 
-    set BOOTSTRAP=../%OUTPUT%/!lambdas[%%i]!/bin-%GOOS%-%GOARCH%/bootstrap 
-    set ZIP=../%OUTPUT%/!lambdas[%%i]!/!lambdas[%%i]!.zip
+    set BOOTSTRAP_DIR=../%OUTPUT%/!lambdas[%%i]!/bin-%GOOS%-%GOARCH%
     set SOURCE=main.go
 
     echo  - building
-    go build -tags lambda.norpc -o !BOOTSTRAP! !SOURCE!
+    go build -tags lambda.norpc -o !BOOTSTRAP_DIR!/bootstrap !SOURCE!
 
     echo  - packaging
-    tar.exe -a -c -f !ZIP! !BOOTSTRAP!
+
+    cd !BOOTSTRAP_DIR!
+    tar.exe -a -c -f ../!lambdas[%%i]!.zip bootstrap
 
     echo  + package %OUTPUT%/!lambdas[%%i]!/!lambdas[%%i]!.zip ready to upload
 
-    cd ..
+    cd ../../..
 )
