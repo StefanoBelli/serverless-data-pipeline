@@ -314,64 +314,188 @@ var SFN_AML_DEFINITION_FMT = `
 
 var dynamoDbTables = []dynamodb.CreateTableInput{
 	{
-		TableName: nil,
+		TableName: &validationStatus,
 		AttributeDefinitions: []ddbtypes.AttributeDefinition{
-			{},
-			{},
+			{
+				AttributeName: &idx,
+				AttributeType: ddbtypes.ScalarAttributeTypeN,
+			},
+			{
+				AttributeName: &nextIdx,
+				AttributeType: ddbtypes.ScalarAttributeTypeN,
+			},
+			{
+				AttributeName: &origData,
+				AttributeType: ddbtypes.ScalarAttributeTypeS,
+			},
+			{
+				AttributeName: &status,
+				AttributeType: ddbtypes.ScalarAttributeTypeN,
+			},
+			{
+				AttributeName: &reason,
+				AttributeType: ddbtypes.ScalarAttributeTypeS,
+			},
 		},
 		KeySchema: []ddbtypes.KeySchemaElement{
-			{},
+			{
+				AttributeName: &idx,
+				KeyType:       ddbtypes.KeyTypeHash,
+			},
 		},
+		BillingMode: ddbtypes.BillingModePayPerRequest,
 	},
 	{
-		TableName: nil,
+		TableName: &transformationStatus,
 		AttributeDefinitions: []ddbtypes.AttributeDefinition{
-			{},
-			{},
+			{
+				AttributeName: &idx,
+				AttributeType: ddbtypes.ScalarAttributeTypeN,
+			},
+			{
+				AttributeName: &nextIdx,
+				AttributeType: ddbtypes.ScalarAttributeTypeN,
+			},
+			{
+				AttributeName: &origData,
+				AttributeType: ddbtypes.ScalarAttributeTypeS,
+			},
+			{
+				AttributeName: &status,
+				AttributeType: ddbtypes.ScalarAttributeTypeN,
+			},
+			{
+				AttributeName: &reason,
+				AttributeType: ddbtypes.ScalarAttributeTypeS,
+			},
 		},
 		KeySchema: []ddbtypes.KeySchemaElement{
-			{},
+			{
+				AttributeName: &idx,
+				KeyType:       ddbtypes.KeyTypeHash,
+			},
 		},
+		BillingMode: ddbtypes.BillingModePayPerRequest,
 	},
 	{
-		TableName: nil,
+		TableName: &storeStatus,
 		AttributeDefinitions: []ddbtypes.AttributeDefinition{
-			{},
-			{},
+			{
+				AttributeName: &idx,
+				AttributeType: ddbtypes.ScalarAttributeTypeN,
+			},
+			{
+				AttributeName: &origData,
+				AttributeType: ddbtypes.ScalarAttributeTypeS,
+			},
+			{
+				AttributeName: &status,
+				AttributeType: ddbtypes.ScalarAttributeTypeN,
+			},
+			{
+				AttributeName: &reason,
+				AttributeType: ddbtypes.ScalarAttributeTypeS,
+			},
 		},
 		KeySchema: []ddbtypes.KeySchemaElement{
-			{},
+			{
+				AttributeName: &idx,
+				KeyType:       ddbtypes.KeyTypeHash,
+			},
 		},
+		BillingMode: ddbtypes.BillingModePayPerRequest,
 	},
 	{
-		TableName: nil,
+		TableName: &nycYellowTaxis,
 		AttributeDefinitions: []ddbtypes.AttributeDefinition{
-			{},
-			{},
+			{
+				AttributeName: &idx,
+				AttributeType: ddbtypes.ScalarAttributeTypeN,
+			},
+			{
+				AttributeName: &vendor,
+				AttributeType: ddbtypes.ScalarAttributeTypeS,
+			},
+			{
+				AttributeName: &pickupTime,
+				AttributeType: ddbtypes.ScalarAttributeTypeS,
+			},
+			{
+				AttributeName: &dropoffTime,
+				AttributeType: ddbtypes.ScalarAttributeTypeS,
+			},
+			{
+				AttributeName: &passengerCount,
+				AttributeType: ddbtypes.ScalarAttributeTypeN,
+			},
+			{
+				AttributeName: &tripDistance,
+				AttributeType: ddbtypes.ScalarAttributeTypeN,
+			},
+			{
+				AttributeName: &ratecode,
+				AttributeType: ddbtypes.ScalarAttributeTypeS,
+			},
+			{
+				AttributeName: &storeAndFwdFlag,
+				AttributeType: ddbtypes.ScalarAttributeTypeB,
+			},
+			{
+				AttributeName: &puLocationId,
+				AttributeType: ddbtypes.ScalarAttributeTypeN,
+			},
+			{
+				AttributeName: &doLocationId,
+				AttributeType: ddbtypes.ScalarAttributeTypeN,
+			},
+			{
+				AttributeName: &paymentType,
+				AttributeType: ddbtypes.ScalarAttributeTypeS,
+			},
+			{
+				AttributeName: &fareAmount,
+				AttributeType: ddbtypes.ScalarAttributeTypeN,
+			},
+			{
+				AttributeName: &extra,
+				AttributeType: ddbtypes.ScalarAttributeTypeN,
+			},
+			{
+				AttributeName: &mtaTax,
+				AttributeType: ddbtypes.ScalarAttributeTypeN,
+			},
+			{
+				AttributeName: &tipAmount,
+				AttributeType: ddbtypes.ScalarAttributeTypeN,
+			},
+			{
+				AttributeName: &tollsAmount,
+				AttributeType: ddbtypes.ScalarAttributeTypeN,
+			},
+			{
+				AttributeName: &improvementSurcharge,
+				AttributeType: ddbtypes.ScalarAttributeTypeN,
+			},
+			{
+				AttributeName: &totalAmount,
+				AttributeType: ddbtypes.ScalarAttributeTypeN,
+			},
+			{
+				AttributeName: &congestionSurcharge,
+				AttributeType: ddbtypes.ScalarAttributeTypeN,
+			},
+			{
+				AttributeName: &airportFee,
+				AttributeType: ddbtypes.ScalarAttributeTypeN,
+			},
 		},
 		KeySchema: []ddbtypes.KeySchemaElement{
-			{},
+			{
+				AttributeName: &idx,
+				KeyType:       ddbtypes.KeyTypeHash,
+			},
 		},
-	},
-	{
-		TableName: nil,
-		AttributeDefinitions: []ddbtypes.AttributeDefinition{
-			{},
-			{},
-		},
-		KeySchema: []ddbtypes.KeySchemaElement{
-			{},
-		},
-	},
-	{
-		TableName: nil,
-		AttributeDefinitions: []ddbtypes.AttributeDefinition{
-			{},
-			{},
-		},
-		KeySchema: []ddbtypes.KeySchemaElement{
-			{},
-		},
+		BillingMode: ddbtypes.BillingModePayPerRequest,
 	},
 }
 

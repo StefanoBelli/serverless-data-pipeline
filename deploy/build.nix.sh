@@ -1,6 +1,6 @@
 #!/bin/sh
 
-SOURCES="src/main.go src/config.go"
+SOURCES="src/main.go src/config.go src/cstrs.go"
 
 OUTPUT=bin
 
