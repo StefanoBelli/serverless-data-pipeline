@@ -43,7 +43,6 @@ func createLambdas() {
 	lambdaSvc := lambda.NewFromConfig(awsConfig)
 
 	for _, lmbd := range lambdaFunctions {
-		lmbd.Role = iamLabRole.Arn
 		opOut, err := lambdaSvc.CreateFunction(
 			context.TODO(),
 			&lmbd)
@@ -65,7 +64,6 @@ func createStepFunction() *string {
 
 	amlDef := getStateMachineDefinition()
 	stateMachine.Definition = &amlDef
-	stateMachine.RoleArn = iamLabRole.Arn
 
 	opOut, err := sfnSvc.CreateStateMachine(
 		context.TODO(),

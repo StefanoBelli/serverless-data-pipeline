@@ -501,94 +501,81 @@ var dynamoDbTables = []dynamodb.CreateTableInput{
 
 var lambdaFunctions = []lambda.CreateFunctionInput{
 	{
-		FunctionName:  nil,
-		Description:   nil,
+		FunctionName:  &validate,
 		Code:          &lmbdtypes.FunctionCode{ZipFile: nil},
 		PackageType:   lmbdtypes.PackageTypeZip,
-		Role:          nil,
+		Role:          iamLabRole.Arn,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeGo1x,
-		Timeout:       nil,
+		Timeout:       &lambdaTimeout,
 	},
 	{
-		FunctionName:  nil,
-		Description:   nil,
+		FunctionName:  &transform,
 		Code:          &lmbdtypes.FunctionCode{ZipFile: nil},
 		PackageType:   lmbdtypes.PackageTypeZip,
-		Role:          nil,
+		Role:          iamLabRole.Arn,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeGo1x,
-		Timeout:       nil,
+		Timeout:       &lambdaTimeout,
 	},
 	{
-		FunctionName:  nil,
-		Description:   nil,
+		FunctionName:  &store,
 		Code:          &lmbdtypes.FunctionCode{ZipFile: nil},
 		PackageType:   lmbdtypes.PackageTypeZip,
-		Role:          nil,
+		Role:          iamLabRole.Arn,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeGo1x,
-		Timeout:       nil,
+		Timeout:       &lambdaTimeout,
 	},
 	{
-		FunctionName:  nil,
-		Description:   nil,
+		FunctionName:  &flagValidateFailed,
 		Code:          &lmbdtypes.FunctionCode{ZipFile: nil},
 		PackageType:   lmbdtypes.PackageTypeZip,
-		Role:          nil,
+		Role:          iamLabRole.Arn,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeGo1x,
-		Timeout:       nil,
+		Timeout:       &lambdaTimeout,
 	},
 	{
-		FunctionName:  nil,
-		Description:   nil,
+		FunctionName:  &flagTransformFailed,
 		Code:          &lmbdtypes.FunctionCode{ZipFile: nil},
 		PackageType:   lmbdtypes.PackageTypeZip,
-		Role:          nil,
+		Role:          iamLabRole.Arn,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeGo1x,
-		Timeout:       nil,
+		Timeout:       &lambdaTimeout,
 	},
 	{
-		FunctionName:  nil,
-		Description:   nil,
+		FunctionName:  &flagStoreFailed,
 		Code:          &lmbdtypes.FunctionCode{ZipFile: nil},
 		PackageType:   lmbdtypes.PackageTypeZip,
-		Role:          nil,
+		Role:          iamLabRole.Arn,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeGo1x,
-		Timeout:       nil,
+		Timeout:       &lambdaTimeout,
 	},
 }
 
 var stateMachine = sfn.CreateStateMachineInput{
-	Name:       nil,
-	RoleArn:    nil,
-	Definition: nil,
+	Name:    &criticalDataPipeline,
+	RoleArn: iamLabRole.Arn,
 }
 
 var api = apigatewayv2.CreateApiInput{
-	Name:         nil,
-	Description:  nil,
+	Name:         &pipeline,
 	ProtocolType: apitypes.ProtocolTypeHttp,
 }
 
 var integrations = []apigatewayv2.CreateIntegrationInput{
 	{
-		ApiId:             nil,
-		CredentialsArn:    nil,
-		Description:       nil,
-		IntegrationMethod: nil,
-		IntegrationUri:    nil,
+		Description:       &criticalDataPipelineIntegration,
+		IntegrationMethod: &post,
 	},
 }
 
 var routes = []apigatewayv2.CreateRouteInput{
 	{
-		ApiId:    nil,
-		RouteKey: nil,
-		Target:   nil,
+		RouteKey: &slashStore,
 		//AuthorizationScopes:
 		//AuthorizationType:
 		//AuthorizerId:
