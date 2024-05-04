@@ -379,7 +379,7 @@ var dynamoDbTables = []dynamodb.CreateTableInput{
 	},
 }
 
-var lambdaFunctions = []lambda.CreateFunctionInput{
+var appDomainLambdas = []lambda.CreateFunctionInput{
 	{
 		FunctionName:  &validate,
 		Code:          &lmbdtypes.FunctionCode{ZipFile: nil},
