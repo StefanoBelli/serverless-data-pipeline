@@ -1,6 +1,6 @@
 #!/bin/sh
 
-SOURCES="src/csv_parser.go src/generator.go src/injector.go src/main.go"
+SOURCES="csv_parser.go generator.go injector.go main.go"
 
 OUTPUT=bin
 
@@ -10,4 +10,8 @@ mkdir $OUTPUT
 
 echo " - building $OUTPUT/inject_data"
 
-go build -o $OUTPUT/inject_data $SOURCES
+cd src
+
+go build -o ../$OUTPUT/inject_data $SOURCES
+
+cd ..

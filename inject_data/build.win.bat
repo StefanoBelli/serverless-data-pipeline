@@ -1,6 +1,6 @@
 @echo off
 
-set SOURCES=src/csv_parser.go src/generator.go src/injector.go src/main.go
+set SOURCES=csv_parser.go generator.go injector.go main.go
 
 set OUTPUT=bin
 
@@ -10,4 +10,8 @@ md %OUTPUT%
 
 echo  - building %OUTPUT%/inject_data.exe
 
-go build -o %OUTPUT%/inject_data.exe %SOURCES%
+cd src
+
+go build -o ../%OUTPUT%/inject_data.exe %SOURCES%
+
+cd ..
