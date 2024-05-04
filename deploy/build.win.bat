@@ -1,6 +1,6 @@
 @echo off
 
-set SOURCES=src/main.go
+set SOURCES=src/main.go src/config.go
 
 set OUTPUT=bin
 
