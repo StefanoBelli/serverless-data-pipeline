@@ -1,6 +1,6 @@
 #!/bin/sh
 
-SOURCES="src/main.go src/config.go src/cstrs.go"
+SOURCES="main.go config.go cstrs.go"
 
 OUTPUT=bin
 
@@ -10,4 +10,8 @@ mkdir $OUTPUT
 
 echo " - building $OUTPUT/deploy"
 
-go build -o $OUTPUT/deploy $SOURCES
+cd src
+
+go build -o ../$OUTPUT/deploy $SOURCES
+
+cd ..

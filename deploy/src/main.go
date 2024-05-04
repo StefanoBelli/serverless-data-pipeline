@@ -327,7 +327,7 @@ func getStateMachineDefinition() string {
 }
 
 func main() {
-	deleteAll := flag.Bool("--delete-all", false, "Delete all resources")
+	deleteAll := flag.Bool("d", false, "Delete all resources")
 
 	awsCfg, err := config.LoadDefaultConfig(
 		context.TODO(),

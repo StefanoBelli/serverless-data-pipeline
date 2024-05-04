@@ -1,6 +1,6 @@
 @echo off
 
-set SOURCES=src/main.go src/config.go src/cstrs.go
+set SOURCES=main.go config.go cstrs.go
 
 set OUTPUT=bin
 
@@ -10,4 +10,8 @@ md %OUTPUT%
 
 echo  - building %OUTPUT%/deploy.exe
 
-go build -o %OUTPUT%/deploy.exe %SOURCES%
+cd src
+
+go build -o ../%OUTPUT%/deploy.exe %SOURCES%
+
+cd ..
