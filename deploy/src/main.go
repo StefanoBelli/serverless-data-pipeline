@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -39,10 +40,17 @@ func createDynamoDbs() {
 	}
 }
 
-func createLambdas() {
+func createLambdas(baseDir string) {
 	lambdaSvc := lambda.NewFromConfig(awsConfig)
 
 	for _, lmbd := range lambdaFunctions {
+		zip, err := loadFunctionZip(baseDir, *lmbd.FunctionName)
+		if err != nil {
+			log.Fatalf("unable to load function zip: %v", err)
+		}
+
+		lmbd.Code.ZipFile = zip
+		lmbd.Role = iamLabRole.Arn
 		opOut, err := lambdaSvc.CreateFunction(
 			context.TODO(),
 			&lmbd)
@@ -64,6 +72,7 @@ func createStepFunction() *string {
 
 	amlDef := getStateMachineDefinition()
 	stateMachine.Definition = &amlDef
+	stateMachine.RoleArn = iamLabRole.Arn
 
 	opOut, err := sfnSvc.CreateStateMachine(
 		context.TODO(),
@@ -89,7 +98,7 @@ func createApiEndpoint() *string {
 		log.Fatalf("unable to create API: %v", err)
 	}
 
-	log.Printf("api %s, endpoint %s, id %s\n ",
+	log.Printf("api %s, endpoint %s, id %s",
 		*opOut.Name, *opOut.ApiEndpoint, *opOut.ApiId)
 
 	return opOut.ApiId
@@ -103,7 +112,8 @@ func mergeRouteWithIntegration(apiId *string, integArn *string,
 
 	integration.ApiId = apiId
 	integration.CredentialsArn = iamLabRole.Arn
-	integration.IntegrationUri = integArn
+	integration.RequestParameters = make(map[string]string)
+	integration.RequestParameters["StateMachineArn"] = *integArn
 
 	integOpOut, err := apiSvc.CreateIntegration(
 		context.TODO(),
@@ -115,7 +125,8 @@ func mergeRouteWithIntegration(apiId *string, integArn *string,
 	log.Printf("integration %s\n", *integOpOut.IntegrationId)
 
 	route.ApiId = apiId
-	route.Target = integOpOut.IntegrationId
+	myTarget := "integrations/" + *integOpOut.IntegrationId
+	route.Target = &myTarget
 
 	routeOpOut, err := apiSvc.CreateRoute(
 		context.TODO(),
@@ -151,7 +162,7 @@ func deleteDynamoDbs() {
 		opOut, err := dynamoDbSvc.DeleteTable(context.TODO(), &dti)
 		if err != nil {
 			log.Printf("unable to delete table %s: %v\n",
-				*opOut.TableDescription.TableName, err)
+				*dti.TableName, err)
 		} else {
 			log.Printf("delete table %s\n",
 				*opOut.TableDescription.TableName)
@@ -234,7 +245,7 @@ func getApiId() (string, error) {
 		}
 
 		for _, apiItem := range gaso.Items {
-			if api.Name == apiItem.Name {
+			if *api.Name == *apiItem.Name {
 				return *apiItem.ApiId, nil
 			}
 		}
@@ -312,6 +323,18 @@ func deleteIntegration(apiId string) {
 	}
 }
 
+func deleteApi(apiId string) {
+	apiSvc := apigatewayv2.NewFromConfig(awsConfig)
+
+	dai := apigatewayv2.DeleteApiInput{ApiId: &apiId}
+	_, err := apiSvc.DeleteApi(context.TODO(), &dai)
+	if err != nil {
+		log.Fatalf("unable to delete API: %v", err)
+	}
+
+	log.Printf("delete api %s\n", apiId)
+}
+
 func getStateMachineDefinition() string {
 	return fmt.Sprintf(SFN_AML_DEFINITION_FMT,
 		lambdaFunctions[0].FunctionName, //validate
@@ -326,8 +349,25 @@ func getStateMachineDefinition() string {
 	)
 }
 
+func loadFunctionZip(pkgs string, name string) ([]byte, error) {
+	path := pkgs + "/" + name + "/" + name + ".zip"
+	_, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return nil, err
+	}
+
+	zipBytes, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	return zipBytes, nil
+}
+
 func main() {
+	baseLambdaPkgs := flag.String("u", "../../lambdas/pkgs", "BaseDir for built lambda deployment packages")
 	deleteAll := flag.Bool("d", false, "Delete all resources")
+	flag.Parse()
 
 	awsCfg, err := config.LoadDefaultConfig(
 		context.TODO(),
@@ -342,7 +382,7 @@ func main() {
 		obtainIamLabRole()
 
 		createDynamoDbs()
-		createLambdas()
+		createLambdas(*baseLambdaPkgs)
 		sfnArn := createStepFunction()
 		apiId := createApiEndpoint()
 		mergeRouteWithIntegration(apiId, sfnArn, integrations[0], routes[0])
@@ -356,5 +396,6 @@ func main() {
 		}
 		deleteRoutes(apiId)
 		deleteIntegration(apiId)
+		deleteApi(apiId)
 	}
 }

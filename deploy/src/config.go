@@ -320,22 +320,6 @@ var dynamoDbTables = []dynamodb.CreateTableInput{
 				AttributeName: &idx,
 				AttributeType: ddbtypes.ScalarAttributeTypeN,
 			},
-			{
-				AttributeName: &nextIdx,
-				AttributeType: ddbtypes.ScalarAttributeTypeN,
-			},
-			{
-				AttributeName: &origData,
-				AttributeType: ddbtypes.ScalarAttributeTypeS,
-			},
-			{
-				AttributeName: &status,
-				AttributeType: ddbtypes.ScalarAttributeTypeN,
-			},
-			{
-				AttributeName: &reason,
-				AttributeType: ddbtypes.ScalarAttributeTypeS,
-			},
 		},
 		KeySchema: []ddbtypes.KeySchemaElement{
 			{
@@ -351,22 +335,6 @@ var dynamoDbTables = []dynamodb.CreateTableInput{
 			{
 				AttributeName: &idx,
 				AttributeType: ddbtypes.ScalarAttributeTypeN,
-			},
-			{
-				AttributeName: &nextIdx,
-				AttributeType: ddbtypes.ScalarAttributeTypeN,
-			},
-			{
-				AttributeName: &origData,
-				AttributeType: ddbtypes.ScalarAttributeTypeS,
-			},
-			{
-				AttributeName: &status,
-				AttributeType: ddbtypes.ScalarAttributeTypeN,
-			},
-			{
-				AttributeName: &reason,
-				AttributeType: ddbtypes.ScalarAttributeTypeS,
 			},
 		},
 		KeySchema: []ddbtypes.KeySchemaElement{
@@ -384,18 +352,6 @@ var dynamoDbTables = []dynamodb.CreateTableInput{
 				AttributeName: &idx,
 				AttributeType: ddbtypes.ScalarAttributeTypeN,
 			},
-			{
-				AttributeName: &origData,
-				AttributeType: ddbtypes.ScalarAttributeTypeS,
-			},
-			{
-				AttributeName: &status,
-				AttributeType: ddbtypes.ScalarAttributeTypeN,
-			},
-			{
-				AttributeName: &reason,
-				AttributeType: ddbtypes.ScalarAttributeTypeS,
-			},
 		},
 		KeySchema: []ddbtypes.KeySchemaElement{
 			{
@@ -410,82 +366,6 @@ var dynamoDbTables = []dynamodb.CreateTableInput{
 		AttributeDefinitions: []ddbtypes.AttributeDefinition{
 			{
 				AttributeName: &idx,
-				AttributeType: ddbtypes.ScalarAttributeTypeN,
-			},
-			{
-				AttributeName: &vendor,
-				AttributeType: ddbtypes.ScalarAttributeTypeS,
-			},
-			{
-				AttributeName: &pickupTime,
-				AttributeType: ddbtypes.ScalarAttributeTypeS,
-			},
-			{
-				AttributeName: &dropoffTime,
-				AttributeType: ddbtypes.ScalarAttributeTypeS,
-			},
-			{
-				AttributeName: &passengerCount,
-				AttributeType: ddbtypes.ScalarAttributeTypeN,
-			},
-			{
-				AttributeName: &tripDistance,
-				AttributeType: ddbtypes.ScalarAttributeTypeN,
-			},
-			{
-				AttributeName: &ratecode,
-				AttributeType: ddbtypes.ScalarAttributeTypeS,
-			},
-			{
-				AttributeName: &storeAndFwdFlag,
-				AttributeType: ddbtypes.ScalarAttributeTypeB,
-			},
-			{
-				AttributeName: &puLocationId,
-				AttributeType: ddbtypes.ScalarAttributeTypeN,
-			},
-			{
-				AttributeName: &doLocationId,
-				AttributeType: ddbtypes.ScalarAttributeTypeN,
-			},
-			{
-				AttributeName: &paymentType,
-				AttributeType: ddbtypes.ScalarAttributeTypeS,
-			},
-			{
-				AttributeName: &fareAmount,
-				AttributeType: ddbtypes.ScalarAttributeTypeN,
-			},
-			{
-				AttributeName: &extra,
-				AttributeType: ddbtypes.ScalarAttributeTypeN,
-			},
-			{
-				AttributeName: &mtaTax,
-				AttributeType: ddbtypes.ScalarAttributeTypeN,
-			},
-			{
-				AttributeName: &tipAmount,
-				AttributeType: ddbtypes.ScalarAttributeTypeN,
-			},
-			{
-				AttributeName: &tollsAmount,
-				AttributeType: ddbtypes.ScalarAttributeTypeN,
-			},
-			{
-				AttributeName: &improvementSurcharge,
-				AttributeType: ddbtypes.ScalarAttributeTypeN,
-			},
-			{
-				AttributeName: &totalAmount,
-				AttributeType: ddbtypes.ScalarAttributeTypeN,
-			},
-			{
-				AttributeName: &congestionSurcharge,
-				AttributeType: ddbtypes.ScalarAttributeTypeN,
-			},
-			{
-				AttributeName: &airportFee,
 				AttributeType: ddbtypes.ScalarAttributeTypeN,
 			},
 		},
@@ -504,61 +384,67 @@ var lambdaFunctions = []lambda.CreateFunctionInput{
 		FunctionName:  &validate,
 		Code:          &lmbdtypes.FunctionCode{ZipFile: nil},
 		PackageType:   lmbdtypes.PackageTypeZip,
-		Role:          iamLabRole.Arn,
+		Role:          nil,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
-		Runtime:       lmbdtypes.RuntimeGo1x,
+		Runtime:       lmbdtypes.RuntimeProvidedal2023,
+		Handler:       &bootstrap,
 		Timeout:       &lambdaTimeout,
 	},
 	{
 		FunctionName:  &transform,
 		Code:          &lmbdtypes.FunctionCode{ZipFile: nil},
 		PackageType:   lmbdtypes.PackageTypeZip,
-		Role:          iamLabRole.Arn,
+		Role:          nil,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
-		Runtime:       lmbdtypes.RuntimeGo1x,
+		Runtime:       lmbdtypes.RuntimeProvidedal2023,
+		Handler:       &bootstrap,
 		Timeout:       &lambdaTimeout,
 	},
 	{
 		FunctionName:  &store,
 		Code:          &lmbdtypes.FunctionCode{ZipFile: nil},
 		PackageType:   lmbdtypes.PackageTypeZip,
-		Role:          iamLabRole.Arn,
+		Role:          nil,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
-		Runtime:       lmbdtypes.RuntimeGo1x,
+		Runtime:       lmbdtypes.RuntimeProvidedal2023,
+		Handler:       &bootstrap,
 		Timeout:       &lambdaTimeout,
 	},
 	{
 		FunctionName:  &flagValidateFailed,
 		Code:          &lmbdtypes.FunctionCode{ZipFile: nil},
 		PackageType:   lmbdtypes.PackageTypeZip,
-		Role:          iamLabRole.Arn,
+		Role:          nil,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
-		Runtime:       lmbdtypes.RuntimeGo1x,
+		Runtime:       lmbdtypes.RuntimeProvidedal2023,
+		Handler:       &bootstrap,
 		Timeout:       &lambdaTimeout,
 	},
 	{
 		FunctionName:  &flagTransformFailed,
 		Code:          &lmbdtypes.FunctionCode{ZipFile: nil},
 		PackageType:   lmbdtypes.PackageTypeZip,
-		Role:          iamLabRole.Arn,
+		Role:          nil,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
-		Runtime:       lmbdtypes.RuntimeGo1x,
+		Runtime:       lmbdtypes.RuntimeProvidedal2023,
+		Handler:       &bootstrap,
 		Timeout:       &lambdaTimeout,
 	},
 	{
 		FunctionName:  &flagStoreFailed,
 		Code:          &lmbdtypes.FunctionCode{ZipFile: nil},
 		PackageType:   lmbdtypes.PackageTypeZip,
-		Role:          iamLabRole.Arn,
+		Role:          nil,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
-		Runtime:       lmbdtypes.RuntimeGo1x,
+		Runtime:       lmbdtypes.RuntimeProvidedal2023,
+		Handler:       &bootstrap,
 		Timeout:       &lambdaTimeout,
 	},
 }
 
 var stateMachine = sfn.CreateStateMachineInput{
 	Name:    &criticalDataPipeline,
-	RoleArn: iamLabRole.Arn,
+	RoleArn: nil,
 }
 
 var api = apigatewayv2.CreateApiInput{
@@ -568,14 +454,16 @@ var api = apigatewayv2.CreateApiInput{
 
 var integrations = []apigatewayv2.CreateIntegrationInput{
 	{
-		Description:       &criticalDataPipelineIntegration,
-		IntegrationMethod: &post,
+		Description:          &criticalDataPipelineIntegration,
+		IntegrationType:      apitypes.IntegrationTypeAwsProxy,
+		IntegrationSubtype:   &startExecution,
+		PayloadFormatVersion: &oneDotZero,
 	},
 }
 
 var routes = []apigatewayv2.CreateRouteInput{
 	{
-		RouteKey: &slashStore,
+		RouteKey: &postSlashStore,
 		//AuthorizationScopes:
 		//AuthorizationType:
 		//AuthorizerId:
