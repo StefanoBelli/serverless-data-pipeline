@@ -382,9 +382,7 @@ var dynamoDbTables = []dynamodb.CreateTableInput{
 var lambdas = []lambda.CreateFunctionInput{
 	{
 		FunctionName:  &validate,
-		Code:          &lmbdtypes.FunctionCode{ZipFile: nil},
 		PackageType:   lmbdtypes.PackageTypeZip,
-		Role:          nil,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeProvidedal2023,
 		Handler:       &bootstrap,
@@ -392,9 +390,7 @@ var lambdas = []lambda.CreateFunctionInput{
 	},
 	{
 		FunctionName:  &transform,
-		Code:          &lmbdtypes.FunctionCode{ZipFile: nil},
 		PackageType:   lmbdtypes.PackageTypeZip,
-		Role:          nil,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeProvidedal2023,
 		Handler:       &bootstrap,
@@ -402,9 +398,7 @@ var lambdas = []lambda.CreateFunctionInput{
 	},
 	{
 		FunctionName:  &store,
-		Code:          &lmbdtypes.FunctionCode{ZipFile: nil},
 		PackageType:   lmbdtypes.PackageTypeZip,
-		Role:          nil,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeProvidedal2023,
 		Handler:       &bootstrap,
@@ -412,9 +406,7 @@ var lambdas = []lambda.CreateFunctionInput{
 	},
 	{
 		FunctionName:  &flagValidateFailed,
-		Code:          &lmbdtypes.FunctionCode{ZipFile: nil},
 		PackageType:   lmbdtypes.PackageTypeZip,
-		Role:          nil,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeProvidedal2023,
 		Handler:       &bootstrap,
@@ -422,9 +414,7 @@ var lambdas = []lambda.CreateFunctionInput{
 	},
 	{
 		FunctionName:  &flagTransformFailed,
-		Code:          &lmbdtypes.FunctionCode{ZipFile: nil},
 		PackageType:   lmbdtypes.PackageTypeZip,
-		Role:          nil,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeProvidedal2023,
 		Handler:       &bootstrap,
@@ -432,9 +422,7 @@ var lambdas = []lambda.CreateFunctionInput{
 	},
 	{
 		FunctionName:  &flagStoreFailed,
-		Code:          &lmbdtypes.FunctionCode{ZipFile: nil},
 		PackageType:   lmbdtypes.PackageTypeZip,
-		Role:          nil,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeProvidedal2023,
 		Handler:       &bootstrap,
@@ -443,8 +431,7 @@ var lambdas = []lambda.CreateFunctionInput{
 }
 
 var stateMachine = sfn.CreateStateMachineInput{
-	Name:    &criticalDataPipeline,
-	RoleArn: nil,
+	Name: &criticalDataPipeline,
 }
 
 var api = apigatewayv2.CreateApiInput{

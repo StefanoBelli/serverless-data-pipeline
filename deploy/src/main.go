@@ -11,12 +11,10 @@ import (
 	"path"
 	"strings"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/apigatewayv2"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
-	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	lmbdtypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
 	"github.com/aws/aws-sdk-go-v2/service/sfn"
@@ -26,18 +24,24 @@ func dflCtx() context.Context {
 	return context.TODO()
 }
 
-var awsConfig aws.Config
-var iamLabRole iamtypes.Role
+type AwsServiceClients struct {
+	dynamodb   *dynamodb.Client
+	apigateway *apigatewayv2.Client
+	sfn        *sfn.Client
+	lambda     *lambda.Client
+	iam        *iam.Client
+}
+
+var svc AwsServiceClients
+var iamLabRoleArn string
 
 /*
  * AWS deploy
  */
 
 func createDynamoDbs() {
-	dynamoDbSvc := dynamodb.NewFromConfig(awsConfig)
-
 	for _, dbs := range dynamoDbTables {
-		opOut, err := dynamoDbSvc.CreateTable(dflCtx(), &dbs)
+		opOut, err := svc.dynamodb.CreateTable(dflCtx(), &dbs)
 		if err != nil {
 			log.Printf("unable to create dynamodb table: %v\n", err)
 		} else {
@@ -57,9 +61,7 @@ func createApi() *string {
 		return nil
 	}
 
-	apiSvc := apigatewayv2.NewFromConfig(awsConfig)
-
-	opOut, err := apiSvc.CreateApi(dflCtx(), &api)
+	opOut, err := svc.apigateway.CreateApi(dflCtx(), &api)
 	if err != nil {
 		log.Printf("unable to create api: %v\n", err)
 		return nil
@@ -71,12 +73,10 @@ func createApi() *string {
 }
 
 func createStepFunction() *string {
-	sfnSvc := sfn.NewFromConfig(awsConfig)
-
 	lsmi := sfn.ListStateMachinesInput{MaxResults: 1000}
 
 	for {
-		lsmOut, err := sfnSvc.ListStateMachines(dflCtx(), &lsmi)
+		lsmOut, err := svc.sfn.ListStateMachines(dflCtx(), &lsmi)
 		if err != nil {
 			log.Printf("unable to list state machines: %v\n", err)
 			break
@@ -97,9 +97,9 @@ func createStepFunction() *string {
 
 	amlDef := getStateMachineDefinition()
 	stateMachine.Definition = &amlDef
-	stateMachine.RoleArn = iamLabRole.Arn
+	stateMachine.RoleArn = &iamLabRoleArn
 
-	opOut, err := sfnSvc.CreateStateMachine(dflCtx(), &stateMachine)
+	opOut, err := svc.sfn.CreateStateMachine(dflCtx(), &stateMachine)
 	if err != nil {
 		log.Printf("unable to create step function: %v\n", err)
 		return nil
@@ -110,16 +110,14 @@ func createStepFunction() *string {
 }
 
 func createLambdas(baseDir string) {
-	lambdaSvc := lambda.NewFromConfig(awsConfig)
-
 	for _, lmbd := range lambdas {
 		zip, err := loadFunctionZip(baseDir, *lmbd.FunctionName)
 		if err != nil {
 			log.Printf("unable to load function zip: %v\n", err)
 		} else {
-			lmbd.Code.ZipFile = zip
-			lmbd.Role = iamLabRole.Arn
-			opOut, err := lambdaSvc.CreateFunction(dflCtx(), &lmbd)
+			lmbd.Code = &lmbdtypes.FunctionCode{ZipFile: zip}
+			lmbd.Role = &iamLabRoleArn
+			opOut, err := svc.lambda.CreateFunction(dflCtx(), &lmbd)
 			if err != nil {
 				log.Printf("unable to create lambda %s: %v\n",
 					*lmbd.FunctionName, err)
@@ -145,15 +143,12 @@ type MergeRouteIntegration struct {
 }
 
 func mergeRouteWithIntegration(merge *MergeRouteIntegration) {
-
-	apiSvc := apigatewayv2.NewFromConfig(awsConfig)
-
 	merge.integration.ApiId = merge.apiId
-	merge.integration.CredentialsArn = iamLabRole.Arn
+	merge.integration.CredentialsArn = &iamLabRoleArn
 	merge.integration.RequestParameters = make(map[string]string)
 	merge.integration.RequestParameters[merge.arnParameterKey] = *merge.integArn
 
-	integOpOut, err := apiSvc.CreateIntegration(dflCtx(), &merge.integration)
+	integOpOut, err := svc.apigateway.CreateIntegration(dflCtx(), &merge.integration)
 	if err != nil {
 		log.Printf("unable to create integration: %v\n", err)
 	} else {
@@ -165,9 +160,7 @@ func mergeRouteWithIntegration(merge *MergeRouteIntegration) {
 		myTarget := "integrations/" + *integOpOut.IntegrationId
 		merge.route.Target = &myTarget
 
-		routeOpOut, err := apiSvc.CreateRoute(
-			dflCtx(),
-			&merge.route)
+		routeOpOut, err := svc.apigateway.CreateRoute(dflCtx(), &merge.route)
 		if err != nil {
 			log.Printf("unable to create route: %v\n", err)
 		} else {
@@ -183,10 +176,8 @@ func mergeRouteWithIntegration(merge *MergeRouteIntegration) {
  */
 
 func deleteApi(apiId string) {
-	apiSvc := apigatewayv2.NewFromConfig(awsConfig)
-
 	dai := apigatewayv2.DeleteApiInput{ApiId: &apiId}
-	_, err := apiSvc.DeleteApi(dflCtx(), &dai)
+	_, err := svc.apigateway.DeleteApi(dflCtx(), &dai)
 	if err != nil {
 		log.Printf("unable to delete api: %v\n", err)
 	} else {
@@ -195,11 +186,9 @@ func deleteApi(apiId string) {
 }
 
 func deleteDynamoDbs() {
-	dynamoDbSvc := dynamodb.NewFromConfig(awsConfig)
-
 	for _, ddbTable := range dynamoDbTables {
 		dti := dynamodb.DeleteTableInput{TableName: ddbTable.TableName}
-		opOut, err := dynamoDbSvc.DeleteTable(dflCtx(), &dti)
+		opOut, err := svc.dynamodb.DeleteTable(dflCtx(), &dti)
 		if err != nil {
 			log.Printf("unable to delete table %s: %v\n", *dti.TableName, err)
 		} else {
@@ -211,11 +200,9 @@ func deleteDynamoDbs() {
 }
 
 func deleteLambdas() {
-	lambdaSvc := lambda.NewFromConfig(awsConfig)
-
 	for _, lmbd := range lambdas {
 		dfi := lambda.DeleteFunctionInput{FunctionName: lmbd.FunctionName}
-		_, err := lambdaSvc.DeleteFunction(dflCtx(), &dfi)
+		_, err := svc.lambda.DeleteFunction(dflCtx(), &dfi)
 		if err != nil {
 			log.Printf("unable to delete lambda %s: %v\n", *dfi.FunctionName, err)
 		} else {
@@ -225,12 +212,10 @@ func deleteLambdas() {
 }
 
 func deleteStepFunction() {
-	sfnSvc := sfn.NewFromConfig(awsConfig)
-
 	lsmi := sfn.ListStateMachinesInput{MaxResults: 1000}
 
 	for {
-		lssmOut, err := sfnSvc.ListStateMachines(dflCtx(), &lsmi)
+		lssmOut, err := svc.sfn.ListStateMachines(dflCtx(), &lsmi)
 		if err != nil {
 			log.Printf("unable to list state machines: %v\n", err)
 			break
@@ -238,7 +223,7 @@ func deleteStepFunction() {
 			for _, sm := range lssmOut.StateMachines {
 				if *sm.Name == *stateMachine.Name {
 					dsmi := sfn.DeleteStateMachineInput{StateMachineArn: sm.StateMachineArn}
-					_, err := sfnSvc.DeleteStateMachine(dflCtx(), &dsmi)
+					_, err := svc.sfn.DeleteStateMachine(dflCtx(), &dsmi)
 					if err != nil {
 						log.Printf("unable to delete state machine %s: %v\n", *sm.Name, err)
 					} else {
@@ -262,12 +247,10 @@ func deleteStepFunction() {
 }
 
 func deleteRoutes(apiId string) {
-	apiSvc := apigatewayv2.NewFromConfig(awsConfig)
-
 	gri := apigatewayv2.GetRoutesInput{ApiId: &apiId, MaxResults: &s1000}
 
 	for {
-		grOut, err := apiSvc.GetRoutes(dflCtx(), &gri)
+		grOut, err := svc.apigateway.GetRoutes(dflCtx(), &gri)
 		if err != nil {
 			log.Printf("unable to list routes: %v\n", err)
 			break
@@ -278,7 +261,7 @@ func deleteRoutes(apiId string) {
 						dri := apigatewayv2.DeleteRouteInput{
 							ApiId: &apiId, RouteId: route.RouteId}
 
-						_, err := apiSvc.DeleteRoute(dflCtx(), &dri)
+						_, err := svc.apigateway.DeleteRoute(dflCtx(), &dri)
 						if err != nil {
 							log.Printf("unable to delete route: %v\n", err)
 						} else {
@@ -297,13 +280,11 @@ func deleteRoutes(apiId string) {
 	}
 }
 
-func deleteIntegration(apiId string) {
-	apapiSvc := apigatewayv2.NewFromConfig(awsConfig)
-
+func deleteIntegrations(apiId string) {
 	gii := apigatewayv2.GetIntegrationsInput{ApiId: &apiId, MaxResults: &s1000}
 
 	for {
-		giOut, err := apapiSvc.GetIntegrations(dflCtx(), &gii)
+		giOut, err := svc.apigateway.GetIntegrations(dflCtx(), &gii)
 		if err != nil {
 			log.Printf("unable to list integrations: %v\n", err)
 			break
@@ -314,7 +295,7 @@ func deleteIntegration(apiId string) {
 						dii := apigatewayv2.DeleteIntegrationInput{
 							ApiId: &apiId, IntegrationId: integration.IntegrationId}
 
-						_, err := apapiSvc.DeleteIntegration(dflCtx(), &dii)
+						_, err := svc.apigateway.DeleteIntegration(dflCtx(), &dii)
 						if err != nil {
 							log.Printf("unable to delete integration: %v\n", err)
 						} else {
@@ -333,7 +314,7 @@ func deleteIntegration(apiId string) {
 	}
 }
 
-func coreUpdateLambda(svc *lambda.Client, name *string, arch *[]lmbdtypes.Architecture, base *string) {
+func coreUpdateLambda(name *string, arch *[]lmbdtypes.Architecture, base *string) {
 	zipBytes, err := loadFunctionZip(*base, *name)
 	if err != nil {
 		log.Printf("unable to load zip for %s: %v\n", *name, err)
@@ -344,7 +325,7 @@ func coreUpdateLambda(svc *lambda.Client, name *string, arch *[]lmbdtypes.Archit
 			ZipFile:       zipBytes,
 		}
 
-		opOut, err := svc.UpdateFunctionCode(dflCtx(), &ufci)
+		opOut, err := svc.lambda.UpdateFunctionCode(dflCtx(), &ufci)
 		if err != nil {
 			log.Printf("unable to update lambda %s: %v\n",
 				*ufci.FunctionName, err)
@@ -361,8 +342,6 @@ func coreUpdateLambda(svc *lambda.Client, name *string, arch *[]lmbdtypes.Archit
 }
 
 func updateLambdas(base string, csl string) {
-	lambdaSvc := lambda.NewFromConfig(awsConfig)
-
 	if csl != "all" {
 		lambdaNames := strings.Split(csl, ",")
 
@@ -388,11 +367,11 @@ func updateLambdas(base string, csl string) {
 				continue
 			}
 
-			coreUpdateLambda(lambdaSvc, &lambdaName, &archs, &base)
+			coreUpdateLambda(&lambdaName, &archs, &base)
 		}
 	} else {
-		for _, lambda := range lambdas {
-			coreUpdateLambda(lambdaSvc, lambda.FunctionName, &lambda.Architectures, &base)
+		for _, myLambda := range lambdas {
+			coreUpdateLambda(myLambda.FunctionName, &myLambda.Architectures, &base)
 		}
 	}
 }
@@ -402,28 +381,21 @@ func updateLambdas(base string, csl string) {
  */
 
 func obtainIamLabRole() {
-	iamSvc := iam.NewFromConfig(awsConfig)
-
 	roleInput := iam.GetRoleInput{RoleName: &IAM_LABROLE}
-	ans, err := iamSvc.GetRole(
-		dflCtx(),
-		&roleInput)
-
+	ans, err := svc.iam.GetRole(dflCtx(), &roleInput)
 	if err != nil {
 		log.Fatalf("unable to retrieve info about role %s: %v",
 			*roleInput.RoleName, err)
 	}
 
-	iamLabRole = *ans.Role
+	iamLabRoleArn = *ans.Role.Arn
 }
 
 func getApiId() (string, error) {
-	apiSvc := apigatewayv2.NewFromConfig(awsConfig)
-
 	gasi := apigatewayv2.GetApisInput{MaxResults: &s1000}
 
 	for {
-		gaso, err := apiSvc.GetApis(dflCtx(), &gasi)
+		gaso, err := svc.apigateway.GetApis(dflCtx(), &gasi)
 		if err != nil {
 			return "", err
 		}
@@ -436,9 +408,11 @@ func getApiId() (string, error) {
 
 		gasi.NextToken = gaso.NextToken
 		if gasi.NextToken == nil {
-			return "", errors.New("unable to find api")
+			break
 		}
 	}
+
+	return "", errors.New("unable to find api")
 }
 
 func getStateMachineDefinition() string {
@@ -525,7 +499,11 @@ func loadAwsConfig() {
 		log.Fatalf("unable to load SDK config: %v", err)
 	}
 
-	awsConfig = awsCfg
+	svc.dynamodb = dynamodb.NewFromConfig(awsCfg)
+	svc.lambda = lambda.NewFromConfig(awsCfg)
+	svc.sfn = sfn.NewFromConfig(awsCfg)
+	svc.apigateway = apigatewayv2.NewFromConfig(awsCfg)
+	svc.iam = iam.NewFromConfig(awsCfg)
 }
 
 func beginIgnoreInterruption() chan os.Signal {
@@ -587,7 +565,7 @@ func main() {
 				log.Fatalf("stopping immediately (reason: %v)", err)
 			}
 			deleteRoutes(apiId)
-			deleteIntegration(apiId)
+			deleteIntegrations(apiId)
 			deleteApi(apiId)
 			endIgnoreInteruption(intChan)
 		}
