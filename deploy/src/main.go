@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"path"
 	"strings"
 
@@ -49,9 +50,16 @@ func createDynamoDbs() {
 }
 
 func createApi() *string {
-	iSvc := apigatewayv2.NewFromConfig(awsConfig)
+	_, err := getApiId()
+	if err == nil {
+		log.Printf("an api with this name: %s already exists\n", *api.Name)
+		log.Println("auto-skipping route and integration creation")
+		return nil
+	}
 
-	opOut, err := iSvc.CreateApi(dflCtx(), &api)
+	apiSvc := apigatewayv2.NewFromConfig(awsConfig)
+
+	opOut, err := apiSvc.CreateApi(dflCtx(), &api)
 	if err != nil {
 		log.Printf("unable to create api: %v\n", err)
 		return nil
@@ -64,6 +72,28 @@ func createApi() *string {
 
 func createStepFunction() *string {
 	sfnSvc := sfn.NewFromConfig(awsConfig)
+
+	lsmi := sfn.ListStateMachinesInput{MaxResults: 1000}
+
+	for {
+		lsmOut, err := sfnSvc.ListStateMachines(dflCtx(), &lsmi)
+		if err != nil {
+			log.Printf("unable to list state machines: %v\n", err)
+			break
+		}
+
+		for _, smItem := range lsmOut.StateMachines {
+			if *smItem.Name == *stateMachine.Name {
+				log.Printf("unable to create sm %s: already exists\n", *smItem.Name)
+				return smItem.StateMachineArn
+			}
+		}
+
+		lsmi.NextToken = lsmOut.NextToken
+		if lsmi.NextToken == nil {
+			break
+		}
+	}
 
 	amlDef := getStateMachineDefinition()
 	stateMachine.Definition = &amlDef
@@ -116,14 +146,14 @@ type MergeRouteIntegration struct {
 
 func mergeRouteWithIntegration(merge *MergeRouteIntegration) {
 
-	iSvc := apigatewayv2.NewFromConfig(awsConfig)
+	apiSvc := apigatewayv2.NewFromConfig(awsConfig)
 
 	merge.integration.ApiId = merge.apiId
 	merge.integration.CredentialsArn = iamLabRole.Arn
 	merge.integration.RequestParameters = make(map[string]string)
 	merge.integration.RequestParameters[merge.arnParameterKey] = *merge.integArn
 
-	integOpOut, err := iSvc.CreateIntegration(dflCtx(), &merge.integration)
+	integOpOut, err := apiSvc.CreateIntegration(dflCtx(), &merge.integration)
 	if err != nil {
 		log.Printf("unable to create integration: %v\n", err)
 	} else {
@@ -135,7 +165,7 @@ func mergeRouteWithIntegration(merge *MergeRouteIntegration) {
 		myTarget := "integrations/" + *integOpOut.IntegrationId
 		merge.route.Target = &myTarget
 
-		routeOpOut, err := iSvc.CreateRoute(
+		routeOpOut, err := apiSvc.CreateRoute(
 			dflCtx(),
 			&merge.route)
 		if err != nil {
@@ -153,10 +183,10 @@ func mergeRouteWithIntegration(merge *MergeRouteIntegration) {
  */
 
 func deleteApi(apiId string) {
-	iSvc := apigatewayv2.NewFromConfig(awsConfig)
+	apiSvc := apigatewayv2.NewFromConfig(awsConfig)
 
 	dai := apigatewayv2.DeleteApiInput{ApiId: &apiId}
-	_, err := iSvc.DeleteApi(dflCtx(), &dai)
+	_, err := apiSvc.DeleteApi(dflCtx(), &dai)
 	if err != nil {
 		log.Printf("unable to delete api: %v\n", err)
 	} else {
@@ -216,7 +246,7 @@ func deleteStepFunction() {
 							*sm.Name, *sm.StateMachineArn)
 					}
 
-					break
+					return
 				}
 			}
 
@@ -227,15 +257,17 @@ func deleteStepFunction() {
 			}
 		}
 	}
+
+	log.Printf("unable to find sfn %s\n", *stateMachine.Name)
 }
 
 func deleteRoutes(apiId string) {
-	iSvc := apigatewayv2.NewFromConfig(awsConfig)
+	apiSvc := apigatewayv2.NewFromConfig(awsConfig)
 
 	gri := apigatewayv2.GetRoutesInput{ApiId: &apiId, MaxResults: &s1000}
 
 	for {
-		grOut, err := iSvc.GetRoutes(dflCtx(), &gri)
+		grOut, err := apiSvc.GetRoutes(dflCtx(), &gri)
 		if err != nil {
 			log.Printf("unable to list routes: %v\n", err)
 			break
@@ -246,7 +278,7 @@ func deleteRoutes(apiId string) {
 						dri := apigatewayv2.DeleteRouteInput{
 							ApiId: &apiId, RouteId: route.RouteId}
 
-						_, err := iSvc.DeleteRoute(dflCtx(), &dri)
+						_, err := apiSvc.DeleteRoute(dflCtx(), &dri)
 						if err != nil {
 							log.Printf("unable to delete route: %v\n", err)
 						} else {
@@ -266,12 +298,12 @@ func deleteRoutes(apiId string) {
 }
 
 func deleteIntegration(apiId string) {
-	apiSvc := apigatewayv2.NewFromConfig(awsConfig)
+	apapiSvc := apigatewayv2.NewFromConfig(awsConfig)
 
 	gii := apigatewayv2.GetIntegrationsInput{ApiId: &apiId, MaxResults: &s1000}
 
 	for {
-		giOut, err := apiSvc.GetIntegrations(dflCtx(), &gii)
+		giOut, err := apapiSvc.GetIntegrations(dflCtx(), &gii)
 		if err != nil {
 			log.Printf("unable to list integrations: %v\n", err)
 			break
@@ -282,7 +314,7 @@ func deleteIntegration(apiId string) {
 						dii := apigatewayv2.DeleteIntegrationInput{
 							ApiId: &apiId, IntegrationId: integration.IntegrationId}
 
-						_, err := apiSvc.DeleteIntegration(dflCtx(), &dii)
+						_, err := apapiSvc.DeleteIntegration(dflCtx(), &dii)
 						if err != nil {
 							log.Printf("unable to delete integration: %v\n", err)
 						} else {
@@ -386,12 +418,12 @@ func obtainIamLabRole() {
 }
 
 func getApiId() (string, error) {
-	iSvc := apigatewayv2.NewFromConfig(awsConfig)
+	apiSvc := apigatewayv2.NewFromConfig(awsConfig)
 
 	gasi := apigatewayv2.GetApisInput{MaxResults: &s1000}
 
 	for {
-		gaso, err := iSvc.GetApis(dflCtx(), &gasi)
+		gaso, err := apiSvc.GetApis(dflCtx(), &gasi)
 		if err != nil {
 			return "", err
 		}
@@ -496,6 +528,22 @@ func loadAwsConfig() {
 	awsConfig = awsCfg
 }
 
+func beginIgnoreInterruption() chan os.Signal {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	go func() {
+		for range c {
+		}
+	}()
+
+	return c
+}
+
+func endIgnoreInteruption(c chan os.Signal) {
+	signal.Reset(os.Interrupt)
+	close(c)
+}
+
 func main() {
 	checkAwsCredentialsFile()
 
@@ -512,6 +560,7 @@ func main() {
 			createDynamoDbs()
 			createLambdas(cmdline.baseLambdaPkgs)
 			sfnArn := createStepFunction()
+			intChan := beginIgnoreInterruption()
 			apiId := createApi()
 			if sfnArn != nil && apiId != nil {
 				mri := MergeRouteIntegration{
@@ -525,10 +574,12 @@ func main() {
 			} else {
 				log.Println("unable to merge route with integration")
 			}
+			endIgnoreInteruption(intChan)
 		} else {
 			deleteDynamoDbs()
 			deleteLambdas()
 			deleteStepFunction()
+			intChan := beginIgnoreInterruption()
 			apiId, err := getApiId()
 			if err != nil {
 				log.Println("unable to get api id")
@@ -538,6 +589,7 @@ func main() {
 			deleteRoutes(apiId)
 			deleteIntegration(apiId)
 			deleteApi(apiId)
+			endIgnoreInteruption(intChan)
 		}
 	}
 }
