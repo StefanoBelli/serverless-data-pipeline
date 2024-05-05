@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -16,6 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
+	lmbdtypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
 	"github.com/aws/aws-sdk-go-v2/service/sfn"
 )
 
@@ -46,12 +48,12 @@ func createDynamoDbs() {
 	}
 }
 
-func createApiEndpoint() *string {
-	apiSvc := apigatewayv2.NewFromConfig(awsConfig)
+func createApi() *string {
+	iSvc := apigatewayv2.NewFromConfig(awsConfig)
 
-	opOut, err := apiSvc.CreateApi(dflCtx(), &api)
+	opOut, err := iSvc.CreateApi(dflCtx(), &api)
 	if err != nil {
-		log.Printf("unable to create API: %v\n", err)
+		log.Printf("unable to create api: %v\n", err)
 		return nil
 	} else {
 		log.Printf("create api %s, endpoint %s, id %s\n",
@@ -77,10 +79,10 @@ func createStepFunction() *string {
 	}
 }
 
-func createAppDomainLambdas(baseDir string) {
+func createLambdas(baseDir string) {
 	lambdaSvc := lambda.NewFromConfig(awsConfig)
 
-	for _, lmbd := range appDomainLambdas {
+	for _, lmbd := range lambdas {
 		zip, err := loadFunctionZip(baseDir, *lmbd.FunctionName)
 		if err != nil {
 			log.Printf("unable to load function zip: %v\n", err)
@@ -89,7 +91,8 @@ func createAppDomainLambdas(baseDir string) {
 			lmbd.Role = iamLabRole.Arn
 			opOut, err := lambdaSvc.CreateFunction(dflCtx(), &lmbd)
 			if err != nil {
-				log.Printf("unable to create lambda: %v\n", err)
+				log.Printf("unable to create lambda %s: %v\n",
+					*lmbd.FunctionName, err)
 			} else {
 				log.Printf("create lambda %s, arn: %s, state: %s (reason: %s)\n",
 					*opOut.FunctionName, *opOut.FunctionArn,
@@ -113,14 +116,14 @@ type MergeRouteIntegration struct {
 
 func mergeRouteWithIntegration(merge *MergeRouteIntegration) {
 
-	apiSvc := apigatewayv2.NewFromConfig(awsConfig)
+	iSvc := apigatewayv2.NewFromConfig(awsConfig)
 
 	merge.integration.ApiId = merge.apiId
 	merge.integration.CredentialsArn = iamLabRole.Arn
 	merge.integration.RequestParameters = make(map[string]string)
 	merge.integration.RequestParameters[merge.arnParameterKey] = *merge.integArn
 
-	integOpOut, err := apiSvc.CreateIntegration(dflCtx(), &merge.integration)
+	integOpOut, err := iSvc.CreateIntegration(dflCtx(), &merge.integration)
 	if err != nil {
 		log.Printf("unable to create integration: %v\n", err)
 	} else {
@@ -132,7 +135,7 @@ func mergeRouteWithIntegration(merge *MergeRouteIntegration) {
 		myTarget := "integrations/" + *integOpOut.IntegrationId
 		merge.route.Target = &myTarget
 
-		routeOpOut, err := apiSvc.CreateRoute(
+		routeOpOut, err := iSvc.CreateRoute(
 			dflCtx(),
 			&merge.route)
 		if err != nil {
@@ -150,12 +153,12 @@ func mergeRouteWithIntegration(merge *MergeRouteIntegration) {
  */
 
 func deleteApi(apiId string) {
-	apiSvc := apigatewayv2.NewFromConfig(awsConfig)
+	iSvc := apigatewayv2.NewFromConfig(awsConfig)
 
 	dai := apigatewayv2.DeleteApiInput{ApiId: &apiId}
-	_, err := apiSvc.DeleteApi(dflCtx(), &dai)
+	_, err := iSvc.DeleteApi(dflCtx(), &dai)
 	if err != nil {
-		log.Printf("unable to delete API: %v\n", err)
+		log.Printf("unable to delete api: %v\n", err)
 	} else {
 		log.Printf("delete api id %s\n", *dai.ApiId)
 	}
@@ -177,10 +180,10 @@ func deleteDynamoDbs() {
 	}
 }
 
-func deleteAppDomainLambdas() {
+func deleteLambdas() {
 	lambdaSvc := lambda.NewFromConfig(awsConfig)
 
-	for _, lmbd := range appDomainLambdas {
+	for _, lmbd := range lambdas {
 		dfi := lambda.DeleteFunctionInput{FunctionName: lmbd.FunctionName}
 		_, err := lambdaSvc.DeleteFunction(dflCtx(), &dfi)
 		if err != nil {
@@ -227,12 +230,12 @@ func deleteStepFunction() {
 }
 
 func deleteRoutes(apiId string) {
-	apiSvc := apigatewayv2.NewFromConfig(awsConfig)
+	iSvc := apigatewayv2.NewFromConfig(awsConfig)
 
 	gri := apigatewayv2.GetRoutesInput{ApiId: &apiId, MaxResults: &s1000}
 
 	for {
-		grOut, err := apiSvc.GetRoutes(dflCtx(), &gri)
+		grOut, err := iSvc.GetRoutes(dflCtx(), &gri)
 		if err != nil {
 			log.Printf("unable to list routes: %v\n", err)
 			break
@@ -243,7 +246,7 @@ func deleteRoutes(apiId string) {
 						dri := apigatewayv2.DeleteRouteInput{
 							ApiId: &apiId, RouteId: route.RouteId}
 
-						_, err := apiSvc.DeleteRoute(dflCtx(), &dri)
+						_, err := iSvc.DeleteRoute(dflCtx(), &dri)
 						if err != nil {
 							log.Printf("unable to delete route: %v\n", err)
 						} else {
@@ -298,6 +301,70 @@ func deleteIntegration(apiId string) {
 	}
 }
 
+func coreUpdateLambda(svc *lambda.Client, name *string, arch *[]lmbdtypes.Architecture, base *string) {
+	zipBytes, err := loadFunctionZip(*base, *name)
+	if err != nil {
+		log.Printf("unable to load zip for %s: %v\n", *name, err)
+	} else {
+		ufci := lambda.UpdateFunctionCodeInput{
+			FunctionName:  name,
+			Architectures: *arch,
+			ZipFile:       zipBytes,
+		}
+
+		opOut, err := svc.UpdateFunctionCode(dflCtx(), &ufci)
+		if err != nil {
+			log.Printf("unable to update lambda %s: %v\n",
+				*ufci.FunctionName, err)
+		} else {
+			log.Printf("update lambda %s, arn: %s, state: %s\n",
+				*opOut.FunctionName, *opOut.FunctionArn,
+				opOut.State)
+
+			log.Printf("\twith deployment package of size %d B, sha256: %s, handler: %s\n",
+				opOut.CodeSize, *opOut.CodeSha256,
+				*opOut.Handler)
+		}
+	}
+}
+
+func updateLambdas(base string, csl string) {
+	lambdaSvc := lambda.NewFromConfig(awsConfig)
+
+	if csl != "all" {
+		lambdaNames := strings.Split(csl, ",")
+
+		for _, lambdaName := range lambdaNames {
+			lambdaName = strings.TrimSpace(lambdaName)
+			if len(lambdaName) == 0 {
+				continue
+			}
+
+			var archs []lmbdtypes.Architecture
+			found := false
+
+			for _, myLambda := range lambdas {
+				if *myLambda.FunctionName == lambdaName {
+					archs = myLambda.Architectures
+					found = true
+					break
+				}
+			}
+
+			if !found {
+				log.Printf("unable to find lambda %s\n", lambdaName)
+				continue
+			}
+
+			coreUpdateLambda(lambdaSvc, &lambdaName, &archs, &base)
+		}
+	} else {
+		for _, lambda := range lambdas {
+			coreUpdateLambda(lambdaSvc, lambda.FunctionName, &lambda.Architectures, &base)
+		}
+	}
+}
+
 /*
  * AWS util
  */
@@ -319,12 +386,12 @@ func obtainIamLabRole() {
 }
 
 func getApiId() (string, error) {
-	apiSvc := apigatewayv2.NewFromConfig(awsConfig)
+	iSvc := apigatewayv2.NewFromConfig(awsConfig)
 
 	gasi := apigatewayv2.GetApisInput{MaxResults: &s1000}
 
 	for {
-		gaso, err := apiSvc.GetApis(dflCtx(), &gasi)
+		gaso, err := iSvc.GetApis(dflCtx(), &gasi)
 		if err != nil {
 			return "", err
 		}
@@ -344,15 +411,15 @@ func getApiId() (string, error) {
 
 func getStateMachineDefinition() string {
 	return fmt.Sprintf(SFN_AML_DEFINITION_FMT,
-		appDomainLambdas[0].FunctionName, //validate
-		appDomainLambdas[1].FunctionName, //transform
-		appDomainLambdas[4].FunctionName, //flagTransformFailed
-		appDomainLambdas[3].FunctionName, //flagValidateFailed
-		appDomainLambdas[2].FunctionName, //store
-		appDomainLambdas[5].FunctionName, //flagStoreFailed
-		appDomainLambdas[4].FunctionName, //flagTransformFailed
-		appDomainLambdas[3].FunctionName, //flagValidateFailed
-		appDomainLambdas[3].FunctionName, //flagValidateFailed
+		lambdas[0].FunctionName, //validate
+		lambdas[1].FunctionName, //transform
+		lambdas[4].FunctionName, //flagTransformFailed
+		lambdas[3].FunctionName, //flagValidateFailed
+		lambdas[2].FunctionName, //store
+		lambdas[5].FunctionName, //flagStoreFailed
+		lambdas[4].FunctionName, //flagTransformFailed
+		lambdas[3].FunctionName, //flagValidateFailed
+		lambdas[3].FunctionName, //flagValidateFailed
 	)
 }
 
@@ -388,6 +455,7 @@ func checkAwsCredentialsFile() {
 type Cmdline struct {
 	baseLambdaPkgs string
 	deleteAll      bool
+	updateLambdas  string
 }
 
 func parseCmdline() Cmdline {
@@ -404,6 +472,13 @@ func parseCmdline() Cmdline {
 		"d",
 		false,
 		"Delete all resources")
+
+	flag.StringVar(
+		&cmdline.updateLambdas,
+		"u",
+		"no",
+		"Comma-separated lambdas to update or all",
+	)
 
 	flag.Parse()
 
@@ -428,37 +503,41 @@ func main() {
 
 	loadAwsConfig()
 
-	if !cmdline.deleteAll {
-		obtainIamLabRole()
-
-		createDynamoDbs()
-		createAppDomainLambdas(cmdline.baseLambdaPkgs)
-		sfnArn := createStepFunction()
-		apiId := createApiEndpoint()
-		if sfnArn != nil && apiId != nil {
-			mri := MergeRouteIntegration{
-				apiId:           apiId,
-				integArn:        sfnArn,
-				arnParameterKey: "StateMachineArn",
-				integration:     integrations[0],
-				route:           routes[0],
-			}
-			mergeRouteWithIntegration(&mri)
-		} else {
-			log.Println("unable to merge route with integration")
-		}
+	if cmdline.updateLambdas != "no" {
+		updateLambdas(cmdline.baseLambdaPkgs, cmdline.updateLambdas)
 	} else {
-		deleteDynamoDbs()
-		deleteAppDomainLambdas()
-		deleteStepFunction()
-		apiId, err := getApiId()
-		if err != nil {
-			log.Println("unable to get API id")
-			log.Println("cannot go further")
-			log.Fatalf("stopping immediately (reason: %v)", err)
+		if !cmdline.deleteAll {
+			obtainIamLabRole()
+
+			createDynamoDbs()
+			createLambdas(cmdline.baseLambdaPkgs)
+			sfnArn := createStepFunction()
+			apiId := createApi()
+			if sfnArn != nil && apiId != nil {
+				mri := MergeRouteIntegration{
+					apiId:           apiId,
+					integArn:        sfnArn,
+					arnParameterKey: "StateMachineArn",
+					integration:     integrations[0],
+					route:           routes[0],
+				}
+				mergeRouteWithIntegration(&mri)
+			} else {
+				log.Println("unable to merge route with integration")
+			}
+		} else {
+			deleteDynamoDbs()
+			deleteLambdas()
+			deleteStepFunction()
+			apiId, err := getApiId()
+			if err != nil {
+				log.Println("unable to get api id")
+				log.Println("cannot go further")
+				log.Fatalf("stopping immediately (reason: %v)", err)
+			}
+			deleteRoutes(apiId)
+			deleteIntegration(apiId)
+			deleteApi(apiId)
 		}
-		deleteRoutes(apiId)
-		deleteIntegration(apiId)
-		deleteApi(apiId)
 	}
 }
