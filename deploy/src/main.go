@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -37,7 +38,10 @@ func createDynamoDbs() {
 		if err != nil {
 			log.Printf("unable to create dynamodb table: %v\n", err)
 		} else {
-			log.Printf
+			log.Printf("create table %s, arn %s, status %s\n",
+				*opOut.TableDescription.TableName,
+				*opOut.TableDescription.TableArn,
+				opOut.TableDescription.TableStatus)
 		}
 	}
 }
@@ -50,7 +54,8 @@ func createApiEndpoint() *string {
 		log.Printf("unable to create API: %v\n", err)
 		return nil
 	} else {
-		log.Printf
+		log.Printf("create api %s, endpoint %s, id %s\n",
+			*opOut.Name, *opOut.ApiEndpoint, *opOut.ApiId)
 		return opOut.ApiId
 	}
 }
@@ -67,7 +72,7 @@ func createStepFunction() *string {
 		log.Printf("unable to create step function: %v\n", err)
 		return nil
 	} else {
-		log.Printf
+		log.Printf("create sfn arn %s\n", *opOut.StateMachineArn)
 		return opOut.StateMachineArn
 	}
 }
@@ -86,7 +91,13 @@ func createAppDomainLambdas(baseDir string) {
 			if err != nil {
 				log.Printf("unable to create lambda: %v\n", err)
 			} else {
-				log.Printf
+				log.Printf("create lambda %s, arn: %s, state: %s (reason: %s)\n",
+					*opOut.FunctionName, *opOut.FunctionArn,
+					opOut.State, *opOut.StateReason)
+
+				log.Printf("\twith deployment package of size %d B, sha256: %s, handler: %s\n",
+					opOut.CodeSize, *opOut.CodeSha256,
+					*opOut.Handler)
 			}
 		}
 	}
@@ -113,7 +124,9 @@ func mergeRouteWithIntegration(merge *MergeRouteIntegration) {
 	if err != nil {
 		log.Printf("unable to create integration: %v\n", err)
 	} else {
-		log.Printf("integration %s\n", *integOpOut.IntegrationId)
+		log.Printf("create integration %s, conn. type: %s, int. type: %s\n",
+			*integOpOut.IntegrationId, integOpOut.ConnectionType,
+			integOpOut.IntegrationType)
 
 		merge.route.ApiId = merge.apiId
 		myTarget := "integrations/" + *integOpOut.IntegrationId
@@ -125,7 +138,9 @@ func mergeRouteWithIntegration(merge *MergeRouteIntegration) {
 		if err != nil {
 			log.Printf("unable to create route: %v\n", err)
 		} else {
-			log.Printf
+			log.Printf("create route %s, id: %s, target: %s, authorization: %s\n",
+				*routeOpOut.RouteKey, *routeOpOut.RouteId, *routeOpOut.Target,
+				routeOpOut.AuthorizationType)
 		}
 	}
 }
@@ -142,7 +157,7 @@ func deleteApi(apiId string) {
 	if err != nil {
 		log.Printf("unable to delete API: %v\n", err)
 	} else {
-		log.Printf
+		log.Printf("delete api id %s\n", *dai.ApiId)
 	}
 }
 
@@ -155,12 +170,14 @@ func deleteDynamoDbs() {
 		if err != nil {
 			log.Printf("unable to delete table %s: %v\n", *dti.TableName, err)
 		} else {
-			log.Printf
+			log.Printf("delete table %s, arn: %s\n",
+				*opOut.TableDescription.TableName,
+				*opOut.TableDescription.TableArn)
 		}
 	}
 }
 
-func deleteLambdas() {
+func deleteAppDomainLambdas() {
 	lambdaSvc := lambda.NewFromConfig(awsConfig)
 
 	for _, lmbd := range appDomainLambdas {
@@ -169,7 +186,7 @@ func deleteLambdas() {
 		if err != nil {
 			log.Printf("unable to delete lambda %s: %v\n", *dfi.FunctionName, err)
 		} else {
-			log.Printf
+			log.Printf("delete lambda %s\n", *lmbd.FunctionName)
 		}
 	}
 }
@@ -192,7 +209,8 @@ func deleteStepFunction() {
 					if err != nil {
 						log.Printf("unable to delete state machine %s: %v\n", *sm.Name, err)
 					} else {
-						log.Printf
+						log.Printf("delete sfn %s, arn: %s\n",
+							*sm.Name, *sm.StateMachineArn)
 					}
 
 					break
@@ -229,7 +247,8 @@ func deleteRoutes(apiId string) {
 						if err != nil {
 							log.Printf("unable to delete route: %v\n", err)
 						} else {
-							log.Printf
+							log.Printf("delete route %s (with api id: %s)\n",
+								*dri.RouteId, *dri.ApiId)
 						}
 					}
 				}
@@ -264,7 +283,8 @@ func deleteIntegration(apiId string) {
 						if err != nil {
 							log.Printf("unable to delete integration: %v\n", err)
 						} else {
-							log.Printf
+							log.Printf("delete integration %s (with api id: %s)\n",
+								*dii.IntegrationId, *dii.ApiId)
 						}
 					}
 				}
@@ -360,7 +380,7 @@ func checkAwsCredentialsFile() {
 		_, err := os.Stat(awsCredentialsFile)
 		if os.IsNotExist(err) {
 			log.Fatalf("unable to find credentials file (looked: %s)",
-				awsCredentialsFile)
+				path.Clean(awsCredentialsFile))
 		}
 	}
 }
@@ -413,8 +433,8 @@ func main() {
 
 		createDynamoDbs()
 		createAppDomainLambdas(cmdline.baseLambdaPkgs)
-		apiId := createApiEndpoint()
 		sfnArn := createStepFunction()
+		apiId := createApiEndpoint()
 		if sfnArn != nil && apiId != nil {
 			mri := MergeRouteIntegration{
 				apiId:           apiId,
@@ -429,7 +449,7 @@ func main() {
 		}
 	} else {
 		deleteDynamoDbs()
-		deleteLambdas()
+		deleteAppDomainLambdas()
 		deleteStepFunction()
 		apiId, err := getApiId()
 		if err != nil {
