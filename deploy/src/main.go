@@ -13,6 +13,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/apigatewayv2"
+	apigtypes "github.com/aws/aws-sdk-go-v2/service/apigatewayv2/types"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
@@ -24,6 +25,11 @@ import (
 
 func dflCtx() context.Context {
 	return context.TODO()
+}
+
+type RouteWithId struct {
+	routeId string
+	route   *apigatewayv2.CreateRouteInput
 }
 
 type AwsServiceClients struct {
@@ -38,6 +44,7 @@ type AwsServiceClients struct {
 var svc AwsServiceClients
 var iamLabRoleArn string
 var lambdasArns []string
+var routeIds []RouteWithId
 
 /*
  * AWS create resources
@@ -146,7 +153,7 @@ type MergeRouteIntegration struct {
 	route           *apigatewayv2.CreateRouteInput
 }
 
-func mergeRouteWithIntegration(merge *MergeRouteIntegration) string {
+func mergeRouteWithIntegration(merge *MergeRouteIntegration) {
 	merge.integration.ApiId = merge.apiId
 	merge.integration.RequestParameters = make(map[string]string)
 	merge.integration.RequestParameters[merge.arnParameterKey] = *merge.integArn
@@ -154,8 +161,6 @@ func mergeRouteWithIntegration(merge *MergeRouteIntegration) string {
 	integOpOut, err := svc.apigateway.CreateIntegration(dflCtx(), &merge.integration)
 	if err != nil {
 		log.Printf("unable to create integration: %v\n", err)
-
-		return ""
 	} else {
 		log.Printf("create integration %s, conn. type: %s, int. type: %s\n",
 			*integOpOut.IntegrationId, integOpOut.ConnectionType,
@@ -172,25 +177,30 @@ func mergeRouteWithIntegration(merge *MergeRouteIntegration) string {
 			log.Printf("create route %s, id: %s, target: %s, authorization: %s\n",
 				*routeOpOut.RouteKey, *routeOpOut.RouteId, *routeOpOut.Target,
 				routeOpOut.AuthorizationType)
-		}
 
-		return *routeOpOut.RouteId
+			routeIds = append(routeIds, RouteWithId{routeId: *routeOpOut.RouteId, route: merge.route})
+		}
 	}
 }
 
-func checkAuthorizationParams(cmdline Cmdline) (bool, []string) {
+func checkAuthorizationParams(cmdline Cmdline) (bool, []*apigatewayv2.CreateRouteInput) {
 	if cmdline.authorization != "no" {
-		var authRoutes []string
+		var authRoutes []*apigatewayv2.CreateRouteInput
 
-		routes := strings.Split(cmdline.authorization, ",")
+		userRoutes := strings.Split(cmdline.authorization, ",")
 
-		for _, route := range routes {
-			tmpRoute := strings.TrimSpace(route)
+		for i := range userRoutes {
+			tmpRoute := strings.TrimSpace(userRoutes[i])
 			tmpRoute = strings.TrimLeft(tmpRoute, "/")
 			if len(tmpRoute) == 0 {
 				log.Println("ignoring empty route for authorization")
 			} else {
-				authRoutes = append(authRoutes, tmpRoute)
+				for j := range routes {
+					if *routes[j].RouteKey == tmpRoute {
+						authRoutes = append(authRoutes, &routes[j])
+						break
+					}
+				}
 			}
 		}
 
@@ -205,7 +215,7 @@ func checkAuthorizationParams(cmdline Cmdline) (bool, []string) {
 		}
 	}
 
-	return false, []string{}
+	return false, nil
 }
 
 func addAuthorizerLambda() {
@@ -248,25 +258,39 @@ func createAuthorizer(apiId *string) string {
 	}
 
 	log.Printf("create authorizer %s, id: %s, credArn: %s, "+
-		"ttl: %s sec, type: %s, lambdaArn: %s, payld vers: %s\n",
+		"ttl: %d sec, type: %s, lambdaArn: %s, payld vers: %s\n",
 		*caOut.Name, *caOut.AuthorizerId, *caOut.AuthorizerCredentialsArn,
-		caOut.AuthorizerResultTtlInSeconds, caOut.AuthorizerType, *caOut.AuthorizerUri,
+		*caOut.AuthorizerResultTtlInSeconds, caOut.AuthorizerType, *caOut.AuthorizerUri,
 		*caOut.AuthorizerPayloadFormatVersion)
 
 	return *caOut.AuthorizerId
 }
 
 func addAuthorizerToRoute(
-	rt *apigatewayv2.CreateRouteInput, routeId string, authorizerId string) {
+	rt *apigatewayv2.CreateRouteInput, authorizerId *string) {
+
+	var matchingRoute RouteWithId
+
+	for _, rid := range routeIds {
+		if rid.route == rt {
+			matchingRoute = rid
+			break
+		}
+	}
+
+	if matchingRoute.route == nil {
+		log.Printf("unable to find route id (route key: %s)\n", *rt.RouteKey)
+		return
+	}
 
 	for _, route := range routes {
 		if route.RouteKey == rt.RouteKey {
 			uri := apigatewayv2.UpdateRouteInput{
 				ApiId:   rt.ApiId,
-				RouteId: &routeId,
+				RouteId: &matchingRoute.routeId,
 				//RouteKey:          rt.RouteKey,
-				AuthorizationType: apitypes.AuthorizationTypeCustom,
-				AuthorizerId:      &authorizerId,
+				AuthorizationType: apigtypes.AuthorizationTypeCustom,
+				AuthorizerId:      authorizerId,
 				//Target:            route.Target,
 			}
 
@@ -501,9 +525,9 @@ func deleteSecret() {
 			}
 			dsOut, err := svc.secretsmanager.DeleteSecret(dflCtx(), &dsi)
 			if err != nil {
-				log.Println("unable to delete secret: %v\n", err)
+				log.Printf("unable to delete secret: %v\n", err)
 			} else {
-				log.Println("delete secret %s\n", dsOut.Name)
+				log.Printf("delete secret %s\n", *dsOut.Name)
 			}
 		}
 	}
@@ -561,7 +585,7 @@ func updateLambdas(base string, csl string) {
 				}
 			}
 
-			if !found && lambdaName != *&authorizerS {
+			if !found && lambdaName != authorizerS {
 				log.Printf("unable to find lambda %s\n", lambdaName)
 				continue
 			}
@@ -728,6 +752,7 @@ func beginIgnoreInterruption() chan os.Signal {
 	signal.Notify(c, os.Interrupt)
 	go func() {
 		for range c {
+			//consume
 		}
 	}()
 
@@ -781,29 +806,38 @@ func main() {
 
 			if authRequired {
 				createSecret(cmdline.authorizationKey)
-				createAuthorizer()
-				addAuthorizerToRoutes(routesThatNeedAuth)
+				authorizerId := createAuthorizer(apiId)
+
+				if authorizerId != "" {
+					for _, route := range routesThatNeedAuth {
+						addAuthorizerToRoute(route, &authorizerId)
+					}
+				}
 			}
 		} else {
-			authPresent := checkRoutesForAnyAuthorizerThenAddLambda()
+			apiId, getApiErr := getApiId()
+			var authorizerId string
+			if getApiErr == nil {
+				authorizerId = checkRoutesForAnyAuthorizerThenAddLambda(&apiId)
+			}
 			deleteDynamoDbs()
 			deleteLambdas()
 			deleteStepFunction()
 			intChan := beginIgnoreInterruption()
-			apiId, err := getApiId()
-			if err != nil {
+			if getApiErr != nil {
 				log.Println("unable to get api id")
 				log.Println("cannot go further")
-				log.Fatalf("stopping immediately (reason: %v)", err)
+				log.Fatalf("stopping immediately (reason: %v)", getApiErr)
 			}
 			deleteRoutes(apiId)
 			deleteIntegrations(apiId)
 			deleteApi(apiId)
 			endIgnoreInteruption(intChan)
 
-			if authPresent {
-				deleteSecret()
-				deleteAuthorizer()
+			deleteSecret() //try deletion anyway
+
+			if getApiErr != nil && authorizerId != "" {
+				deleteAuthorizer(&apiId, &authorizerId)
 			}
 		}
 	}
