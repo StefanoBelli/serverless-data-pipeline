@@ -792,7 +792,7 @@ func recoverIfNeeded(apiId **string) {
 		}
 		gfOut, err := svc.lambda.GetFunction(dflCtx(), &gfi)
 		if err == nil {
-			lambdasArns[0] = *gfOut.Configuration.FunctionArn
+			lambdasArns = append(lambdasArns, *gfOut.Configuration.FunctionArn)
 		} else {
 			log.Fatalf("unable to proceed, no authorizer-lambda arn: %v", err)
 		}
