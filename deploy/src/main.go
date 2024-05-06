@@ -836,7 +836,7 @@ func main() {
 
 			deleteSecret() //try deletion anyway
 
-			if getApiErr != nil && authorizerId != "" {
+			if getApiErr == nil && authorizerId != "" {
 				deleteAuthorizer(&apiId, &authorizerId)
 			}
 		}
