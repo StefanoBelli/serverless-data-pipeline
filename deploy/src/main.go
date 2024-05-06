@@ -13,10 +13,12 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/apigatewayv2"
+	apitypes "github.com/aws/aws-sdk-go-v2/service/apigatewayv2/types"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	lmbdtypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/sfn"
 )
 
@@ -25,15 +27,17 @@ func dflCtx() context.Context {
 }
 
 type AwsServiceClients struct {
-	dynamodb   *dynamodb.Client
-	apigateway *apigatewayv2.Client
-	sfn        *sfn.Client
-	lambda     *lambda.Client
-	iam        *iam.Client
+	dynamodb       *dynamodb.Client
+	apigateway     *apigatewayv2.Client
+	sfn            *sfn.Client
+	lambda         *lambda.Client
+	iam            *iam.Client
+	secretsmanager *secretsmanager.Client
 }
 
 var svc AwsServiceClients
 var iamLabRoleArn string
+var lambdasArns []string
 
 /*
  * AWS create resources
@@ -97,7 +101,6 @@ func createStepFunction() *string {
 
 	amlDef := getStateMachineDefinition()
 	stateMachine.Definition = &amlDef
-	stateMachine.RoleArn = &iamLabRoleArn
 
 	opOut, err := svc.sfn.CreateStateMachine(dflCtx(), &stateMachine)
 	if err != nil {
@@ -116,12 +119,13 @@ func createLambdas(baseDir string) {
 			log.Printf("unable to load function zip: %v\n", err)
 		} else {
 			lmbd.Code = &lmbdtypes.FunctionCode{ZipFile: zip}
-			lmbd.Role = &iamLabRoleArn
 			opOut, err := svc.lambda.CreateFunction(dflCtx(), &lmbd)
 			if err != nil {
 				log.Printf("unable to create lambda %s: %v\n",
 					*lmbd.FunctionName, err)
 			} else {
+				lambdasArns = append(lambdasArns, *opOut.FunctionArn)
+
 				log.Printf("create lambda %s, arn: %s, state: %s (reason: %s)\n",
 					*opOut.FunctionName, *opOut.FunctionArn,
 					opOut.State, *opOut.StateReason)
@@ -139,18 +143,19 @@ type MergeRouteIntegration struct {
 	arnParameterKey string
 	integArn        *string
 	integration     apigatewayv2.CreateIntegrationInput
-	route           apigatewayv2.CreateRouteInput
+	route           *apigatewayv2.CreateRouteInput
 }
 
-func mergeRouteWithIntegration(merge *MergeRouteIntegration) {
+func mergeRouteWithIntegration(merge *MergeRouteIntegration) string {
 	merge.integration.ApiId = merge.apiId
-	merge.integration.CredentialsArn = &iamLabRoleArn
 	merge.integration.RequestParameters = make(map[string]string)
 	merge.integration.RequestParameters[merge.arnParameterKey] = *merge.integArn
 
 	integOpOut, err := svc.apigateway.CreateIntegration(dflCtx(), &merge.integration)
 	if err != nil {
 		log.Printf("unable to create integration: %v\n", err)
+
+		return ""
 	} else {
 		log.Printf("create integration %s, conn. type: %s, int. type: %s\n",
 			*integOpOut.IntegrationId, integOpOut.ConnectionType,
@@ -160,7 +165,7 @@ func mergeRouteWithIntegration(merge *MergeRouteIntegration) {
 		myTarget := "integrations/" + *integOpOut.IntegrationId
 		merge.route.Target = &myTarget
 
-		routeOpOut, err := svc.apigateway.CreateRoute(dflCtx(), &merge.route)
+		routeOpOut, err := svc.apigateway.CreateRoute(dflCtx(), merge.route)
 		if err != nil {
 			log.Printf("unable to create route: %v\n", err)
 		} else {
@@ -168,23 +173,113 @@ func mergeRouteWithIntegration(merge *MergeRouteIntegration) {
 				*routeOpOut.RouteKey, *routeOpOut.RouteId, *routeOpOut.Target,
 				routeOpOut.AuthorizationType)
 		}
+
+		return *routeOpOut.RouteId
 	}
 }
 
-func checkAuthorizationParamsThenAddLambda(cmdline Cmdline) {
-	panic("unimplemented")
+func checkAuthorizationParams(cmdline Cmdline) (bool, []string) {
+	if cmdline.authorization != "no" {
+		var authRoutes []string
+
+		routes := strings.Split(cmdline.authorization, ",")
+
+		for _, route := range routes {
+			tmpRoute := strings.TrimSpace(route)
+			tmpRoute = strings.TrimLeft(tmpRoute, "/")
+			if len(tmpRoute) == 0 {
+				log.Println("ignoring empty route for authorization")
+			} else {
+				authRoutes = append(authRoutes, tmpRoute)
+			}
+		}
+
+		if cmdline.authorizationKey == "no" {
+			log.Fatalln("key is required along with authorization")
+		}
+
+		return true, authRoutes
+	} else {
+		if cmdline.authorizationKey != "no" {
+			log.Println("ignoring key (no authorization enabled)")
+		}
+	}
+
+	return false, []string{}
 }
 
-func createSecret(s string) {
-	panic("unimplemented")
+func addAuthorizerLambda() {
+	lambdas = append(lambdas, lambda.CreateFunctionInput{
+		FunctionName:  &authorizerS,
+		Role:          &iamLabRoleArn,
+		PackageType:   lmbdtypes.PackageTypeZip,
+		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
+		Runtime:       lmbdtypes.RuntimeProvidedal2023,
+		Handler:       &bootstrap,
+		Timeout:       &lambdaTimeout,
+	})
 }
 
-func createAuthorizer() {
-	panic("unimplemented")
+func createSecret(key string) bool {
+	secret.SecretBinary = []byte(key)
+	csOut, err := svc.secretsmanager.CreateSecret(dflCtx(), &secret)
+	if err != nil {
+		log.Printf("unable to create secret (auth will never succeed): %v\n",
+			err)
+
+		return false
+	}
+
+	log.Printf("create secret %s (key [not shown]), arn: %s\n",
+		*csOut.Name, *csOut.ARN)
+
+	return true
 }
 
-func addAuthorizerToRoutes(s string) {
-	panic("unimplemented")
+func createAuthorizer(apiId *string) string {
+	authorizer.ApiId = apiId
+	authorizer.AuthorizerUri = &lambdasArns[len(lambdasArns)-1]
+
+	caOut, err := svc.apigateway.CreateAuthorizer(dflCtx(), &authorizer)
+	if err != nil {
+		log.Printf("unable to create authorizer: %v", err)
+
+		return ""
+	}
+
+	log.Printf("create authorizer %s, id: %s, credArn: %s, "+
+		"ttl: %s sec, type: %s, lambdaArn: %s, payld vers: %s\n",
+		*caOut.Name, *caOut.AuthorizerId, *caOut.AuthorizerCredentialsArn,
+		caOut.AuthorizerResultTtlInSeconds, caOut.AuthorizerType, *caOut.AuthorizerUri,
+		*caOut.AuthorizerPayloadFormatVersion)
+
+	return *caOut.AuthorizerId
+}
+
+func addAuthorizerToRoute(
+	rt *apigatewayv2.CreateRouteInput, routeId string, authorizerId string) {
+
+	for _, route := range routes {
+		if route.RouteKey == rt.RouteKey {
+			uri := apigatewayv2.UpdateRouteInput{
+				ApiId:   rt.ApiId,
+				RouteId: &routeId,
+				//RouteKey:          rt.RouteKey,
+				AuthorizationType: apitypes.AuthorizationTypeCustom,
+				AuthorizerId:      &authorizerId,
+				//Target:            route.Target,
+			}
+
+			urOut, err := svc.apigateway.UpdateRoute(dflCtx(), &uri)
+			if err != nil {
+				log.Printf("unable to update route %s: %v\n", *rt.RouteKey, err)
+			} else {
+				log.Printf("update route %s (adding authorizer id: %s, with type: %s)\n",
+					*urOut.RouteKey, *urOut.AuthorizerId, urOut.AuthorizationType)
+			}
+			break
+		}
+	}
 }
 
 /*
@@ -394,7 +489,7 @@ func updateLambdas(base string, csl string) {
 				}
 			}
 
-			if !found {
+			if !found && lambdaName != *&authorizerS {
 				log.Printf("unable to find lambda %s\n", lambdaName)
 				continue
 			}
@@ -553,6 +648,7 @@ func loadAwsConfig() {
 	svc.sfn = sfn.NewFromConfig(awsCfg)
 	svc.apigateway = apigatewayv2.NewFromConfig(awsCfg)
 	svc.iam = iam.NewFromConfig(awsCfg)
+	svc.secretsmanager = secretsmanager.NewFromConfig(awsCfg)
 }
 
 func beginIgnoreInterruption() chan os.Signal {
@@ -582,11 +678,17 @@ func main() {
 		updateLambdas(cmdline.baseLambdaPkgs, cmdline.updateLambdas)
 	} else {
 		if !cmdline.deleteAll {
-			authRequired := checkAuthorizationParamsThenAddLambda(cmdline)
+			authRequired, routesThatNeedAuth :=
+				checkAuthorizationParams(cmdline)
 
 			obtainIamLabRole()
 
 			createDynamoDbs()
+
+			if authRequired {
+				addAuthorizerLambda()
+			}
+
 			createLambdas(cmdline.baseLambdaPkgs)
 			sfnArn := createStepFunction()
 			intChan := beginIgnoreInterruption()
@@ -597,7 +699,7 @@ func main() {
 					integArn:        sfnArn,
 					arnParameterKey: "StateMachineArn",
 					integration:     integrations[0],
-					route:           routes[0],
+					route:           &routes[0],
 				}
 				mergeRouteWithIntegration(&mri)
 			} else {
@@ -608,7 +710,7 @@ func main() {
 			if authRequired {
 				createSecret(cmdline.authorizationKey)
 				createAuthorizer()
-				addAuthorizerToRoutes(cmdline.authorization)
+				addAuthorizerToRoutes(routesThatNeedAuth)
 			}
 		} else {
 			authPresent := checkRoutesForAnyAuthorizerThenAddLambda()

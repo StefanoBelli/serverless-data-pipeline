@@ -7,6 +7,7 @@ import (
 	ddbtypes "github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	lmbdtypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/sfn"
 )
 
@@ -382,6 +383,7 @@ var dynamoDbTables = []dynamodb.CreateTableInput{
 var lambdas = []lambda.CreateFunctionInput{
 	{
 		FunctionName:  &validate,
+		Role:          &iamLabRoleArn,
 		PackageType:   lmbdtypes.PackageTypeZip,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeProvidedal2023,
@@ -390,6 +392,7 @@ var lambdas = []lambda.CreateFunctionInput{
 	},
 	{
 		FunctionName:  &transform,
+		Role:          &iamLabRoleArn,
 		PackageType:   lmbdtypes.PackageTypeZip,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeProvidedal2023,
@@ -398,6 +401,7 @@ var lambdas = []lambda.CreateFunctionInput{
 	},
 	{
 		FunctionName:  &store,
+		Role:          &iamLabRoleArn,
 		PackageType:   lmbdtypes.PackageTypeZip,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeProvidedal2023,
@@ -406,6 +410,7 @@ var lambdas = []lambda.CreateFunctionInput{
 	},
 	{
 		FunctionName:  &flagValidateFailed,
+		Role:          &iamLabRoleArn,
 		PackageType:   lmbdtypes.PackageTypeZip,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeProvidedal2023,
@@ -414,6 +419,7 @@ var lambdas = []lambda.CreateFunctionInput{
 	},
 	{
 		FunctionName:  &flagTransformFailed,
+		Role:          &iamLabRoleArn,
 		PackageType:   lmbdtypes.PackageTypeZip,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeProvidedal2023,
@@ -422,6 +428,7 @@ var lambdas = []lambda.CreateFunctionInput{
 	},
 	{
 		FunctionName:  &flagStoreFailed,
+		Role:          &iamLabRoleArn,
 		PackageType:   lmbdtypes.PackageTypeZip,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeProvidedal2023,
@@ -431,7 +438,8 @@ var lambdas = []lambda.CreateFunctionInput{
 }
 
 var stateMachine = sfn.CreateStateMachineInput{
-	Name: &criticalDataPipeline,
+	Name:    &criticalDataPipeline,
+	RoleArn: &iamLabRoleArn,
 }
 
 var api = apigatewayv2.CreateApiInput{
@@ -445,6 +453,7 @@ var integrations = []apigatewayv2.CreateIntegrationInput{
 		IntegrationType:      apitypes.IntegrationTypeAwsProxy,
 		IntegrationSubtype:   &startExecution,
 		PayloadFormatVersion: &twoDotZero,
+		CredentialsArn:       &iamLabRoleArn,
 	},
 }
 
@@ -455,4 +464,21 @@ var routes = []apigatewayv2.CreateRouteInput{
 		//AuthorizationType:
 		//AuthorizerId:
 	},
+}
+
+var secret = secretsmanager.CreateSecretInput{
+	Name:        &dataPipelineAuthSecret,
+	Description: &secretDescription,
+}
+
+var authorizer = apigatewayv2.CreateAuthorizerInput{
+	Name:                           &dataPipelineAuthorizer,
+	AuthorizerType:                 apitypes.AuthorizerTypeRequest,
+	IdentitySource:                 []string{"$request.header.Authorization"},
+	AuthorizerPayloadFormatVersion: &twoDotZero,
+	AuthorizerResultTtlInSeconds:   &fiveMin,
+	EnableSimpleResponses:          &trueVal,
+	AuthorizerCredentialsArn:       &iamLabRoleArn,
+	//ApiId
+	//AuthorizerUri
 }
