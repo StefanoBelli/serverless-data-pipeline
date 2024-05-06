@@ -230,20 +230,26 @@ func addAuthorizerLambda() {
 	})
 }
 
-func createSecret(key string) bool {
+func createOrUpdateSecret(key string) {
 	secret.SecretBinary = []byte(key)
 	csOut, err := svc.secretsmanager.CreateSecret(dflCtx(), &secret)
 	if err != nil {
-		log.Printf("unable to create secret: %v\n",
-			err)
+		psvi := secretsmanager.PutSecretValueInput{
+			SecretId:     secret.Name,
+			SecretBinary: secret.SecretBinary,
+		}
 
-		return false
+		psvOut, err := svc.secretsmanager.PutSecretValue(dflCtx(), &psvi)
+		if err != nil {
+			log.Printf("unable to create or update secret: %v\n", err)
+		} else {
+			log.Printf("update secret (key [not shown]) for %s, arn: %s\n",
+				*psvOut.Name, *psvOut.ARN)
+		}
+	} else {
+		log.Printf("create secret %s (key [not shown]), arn: %s\n",
+			*csOut.Name, *csOut.ARN)
 	}
-
-	log.Printf("create secret %s (key [not shown]), arn: %s\n",
-		*csOut.Name, *csOut.ARN)
-
-	return true
 }
 
 func createAuthorizer(apiId *string) string {
@@ -287,12 +293,10 @@ func addAuthorizerToRoute(
 	for _, route := range routes {
 		if route.RouteKey == rt.RouteKey {
 			uri := apigatewayv2.UpdateRouteInput{
-				ApiId:   rt.ApiId,
-				RouteId: &matchingRoute.routeId,
-				//RouteKey:          rt.RouteKey,
+				ApiId:             rt.ApiId,
+				RouteId:           &matchingRoute.routeId,
 				AuthorizationType: apigtypes.AuthorizationTypeCustom,
 				AuthorizerId:      authorizerId,
-				//Target:            route.Target,
 			}
 
 			urOut, err := svc.apigateway.UpdateRoute(dflCtx(), &uri)
@@ -780,7 +784,7 @@ func main() {
 			endIgnoreInteruption(intChan)
 
 			if authRequired {
-				createSecret(cmdline.authorizationKey)
+				createOrUpdateSecret(cmdline.authorizationKey)
 				authorizerId := createAuthorizer(apiId)
 
 				if authorizerId != "" {
