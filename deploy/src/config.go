@@ -463,6 +463,10 @@ var routes = []apigatewayv2.CreateRouteInput{
 	},
 }
 
+var routeArnParameterKeys = map[string]string{}
+
+var routeIntegLambda = map[string]string{}
+
 var secret = secretsmanager.CreateSecretInput{
 	Name:        &dataPipelineAuthSecret,
 	Description: &secretDescription,

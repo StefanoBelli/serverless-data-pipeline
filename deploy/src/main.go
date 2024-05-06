@@ -27,9 +27,13 @@ func dflCtx() context.Context {
 	return context.TODO()
 }
 
-type RouteWithId struct {
-	routeId string
-	route   *apigatewayv2.CreateRouteInput
+type RouteExtraInfos struct {
+	routeId     string
+	integration struct {
+		arn          string
+		parameterKey string
+	}
+	route *apigatewayv2.CreateRouteInput
 }
 
 type AwsServiceClients struct {
@@ -44,7 +48,7 @@ type AwsServiceClients struct {
 var svc AwsServiceClients
 var iamLabRoleArn string
 var lambdasArns []string
-var routeIds []RouteWithId
+var routeExtras []RouteExtraInfos
 
 /*
  * AWS create resources
@@ -83,7 +87,7 @@ func createApi() *string {
 	}
 }
 
-func createStepFunction() *string {
+func createStepFunction() {
 	lsmi := sfn.ListStateMachinesInput{MaxResults: 1000}
 
 	for {
@@ -95,8 +99,10 @@ func createStepFunction() *string {
 
 		for _, smItem := range lsmOut.StateMachines {
 			if *smItem.Name == *stateMachine.Name {
-				log.Printf("unable to create sm %s: already exists\n", *smItem.Name)
-				return smItem.StateMachineArn
+				log.Printf("unable to create sfn %s: already exists\n", *smItem.Name)
+				routeExtras[0].integration.arn = *smItem.StateMachineArn
+				routeExtras[0].integration.parameterKey = "StateMachineArn"
+				return
 			}
 		}
 
@@ -112,10 +118,10 @@ func createStepFunction() *string {
 	opOut, err := svc.sfn.CreateStateMachine(dflCtx(), &stateMachine)
 	if err != nil {
 		log.Printf("unable to create step function: %v\n", err)
-		return nil
 	} else {
 		log.Printf("create sfn arn %s\n", *opOut.StateMachineArn)
-		return opOut.StateMachineArn
+		routeExtras[0].integration.arn = *opOut.StateMachineArn
+		routeExtras[0].integration.parameterKey = "StateMachineArn"
 	}
 }
 
@@ -140,6 +146,28 @@ func createLambdas(baseDir string) {
 				log.Printf("\twith deployment package of size %d B, sha256: %s, handler: %s\n",
 					opOut.CodeSize, *opOut.CodeSha256,
 					*opOut.Handler)
+
+				for routeKey, lambdaName := range routeIntegLambda {
+					if lambdaName == *lmbd.FunctionName {
+						for i := range routeExtras[1:] {
+							rk := *routeExtras[i].route.RouteKey
+							if rk == routeKey {
+								routeExtras[i].integration.arn = *opOut.FunctionArn
+
+								for routeNameKey, arnParamKeyValue := range routeArnParameterKeys {
+									if rk == routeNameKey {
+										routeExtras[i].integration.parameterKey = arnParamKeyValue
+										break
+									}
+								}
+
+								break
+							}
+						}
+
+						break
+					}
+				}
 			}
 		}
 	}
@@ -147,18 +175,18 @@ func createLambdas(baseDir string) {
 
 type MergeRouteIntegration struct {
 	apiId           *string
-	arnParameterKey string
+	arnParameterKey *string
 	integArn        *string
-	integration     apigatewayv2.CreateIntegrationInput
+	integration     *apigatewayv2.CreateIntegrationInput
 	route           *apigatewayv2.CreateRouteInput
 }
 
 func mergeRouteWithIntegration(merge *MergeRouteIntegration) {
 	merge.integration.ApiId = merge.apiId
 	merge.integration.RequestParameters = make(map[string]string)
-	merge.integration.RequestParameters[merge.arnParameterKey] = *merge.integArn
+	merge.integration.RequestParameters[*merge.arnParameterKey] = *merge.integArn
 
-	integOpOut, err := svc.apigateway.CreateIntegration(dflCtx(), &merge.integration)
+	integOpOut, err := svc.apigateway.CreateIntegration(dflCtx(), merge.integration)
 	if err != nil {
 		log.Printf("unable to create integration: %v\n", err)
 	} else {
@@ -177,7 +205,11 @@ func mergeRouteWithIntegration(merge *MergeRouteIntegration) {
 			log.Printf("create route %s, id: %s, target: %s\n",
 				*routeOpOut.RouteKey, *routeOpOut.RouteId, *routeOpOut.Target)
 
-			routeIds = append(routeIds, RouteWithId{routeId: *routeOpOut.RouteId, route: merge.route})
+			for i := range routeExtras {
+				if *routeExtras[i].route.RouteKey == *routeOpOut.RouteKey {
+					routeExtras[i].routeId = *routeOpOut.RouteId
+				}
+			}
 		}
 	}
 }
@@ -276,9 +308,9 @@ func createAuthorizer(apiId *string) string {
 func addAuthorizerToRoute(
 	rt *apigatewayv2.CreateRouteInput, authorizerId *string) {
 
-	var matchingRoute RouteWithId
+	var matchingRoute RouteExtraInfos
 
-	for _, rid := range routeIds {
+	for _, rid := range routeExtras {
 		if rid.route == rt {
 			matchingRoute = rid
 			break
@@ -743,6 +775,56 @@ func endIgnoreInteruption(c chan os.Signal) {
 	close(c)
 }
 
+func recoverIfNeeded(apiId **string) {
+	if *apiId == nil {
+		recoveredApiId, err := getApiId()
+		if err != nil {
+			log.Fatalf("unable to proceed, no api id: %v", err)
+		}
+
+		*apiId = new(string)
+		**apiId = recoveredApiId
+	}
+
+	if len(lambdasArns) == 0 {
+		gfi := lambda.GetFunctionInput{
+			FunctionName: lambdas[len(routes)-1].FunctionName,
+		}
+		gfOut, err := svc.lambda.GetFunction(dflCtx(), &gfi)
+		if err == nil {
+			lambdasArns[0] = *gfOut.Configuration.FunctionArn
+		} else {
+			log.Fatalf("unable to proceed, no authorizer-lambda arn: %v", err)
+		}
+	}
+}
+
+func mergeAllRoutesWithTheirIntegration(apiId *string) {
+	for i := range routeExtras {
+		if len(routeExtras[i].integration.arn) != 0 {
+			mri := MergeRouteIntegration{
+				apiId:           apiId,
+				integArn:        &routeExtras[i].integration.arn,
+				arnParameterKey: &routeExtras[i].integration.parameterKey,
+				integration:     &integrations[i],
+				route:           &routes[i],
+			}
+			mergeRouteWithIntegration(&mri)
+		} else {
+			log.Printf("WARNING: no integration ARN for route %s\n",
+				*routes[i].RouteKey)
+		}
+	}
+}
+
+func initRouteExtras() {
+	for i := range routes {
+		routeExtras = append(routeExtras, RouteExtraInfos{
+			route: &routes[i],
+		})
+	}
+}
+
 func main() {
 	checkAwsCredentialsFile()
 
@@ -759,38 +841,30 @@ func main() {
 
 			obtainIamLabRole()
 
-			createDynamoDbs()
+			initRouteExtras()
 
+			createDynamoDbs()
 			if authRequired {
 				addAuthorizerLambda()
 			}
-
 			createLambdas(cmdline.baseLambdaPkgs)
-			sfnArn := createStepFunction()
+			createStepFunction()
 			intChan := beginIgnoreInterruption()
 			apiId := createApi()
-			if sfnArn != nil && apiId != nil {
-				mri := MergeRouteIntegration{
-					apiId:           apiId,
-					integArn:        sfnArn,
-					arnParameterKey: "StateMachineArn",
-					integration:     integrations[0],
-					route:           &routes[0],
-				}
-				mergeRouteWithIntegration(&mri)
-			} else {
-				log.Println("unable to merge route with integration")
-			}
+			mergeAllRoutesWithTheirIntegration(apiId)
 			endIgnoreInteruption(intChan)
 
 			if authRequired {
 				createOrUpdateSecret(cmdline.authorizationKey)
+				recoverIfNeeded(&apiId)
+
 				authorizerId := createAuthorizer(apiId)
 
 				if authorizerId != "" {
 					for _, route := range routesThatNeedAuth {
 						addAuthorizerToRoute(route, &authorizerId)
 					}
+
 				}
 			}
 		} else {
