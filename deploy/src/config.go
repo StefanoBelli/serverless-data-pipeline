@@ -460,9 +460,6 @@ var integrations = []apigatewayv2.CreateIntegrationInput{
 var routes = []apigatewayv2.CreateRouteInput{
 	{
 		RouteKey: &postSlashStore,
-		//AuthorizationScopes:
-		//AuthorizationType:
-		//AuthorizerId:
 	},
 }
 
@@ -479,6 +476,4 @@ var authorizer = apigatewayv2.CreateAuthorizerInput{
 	AuthorizerResultTtlInSeconds:   &fiveMin,
 	EnableSimpleResponses:          &trueVal,
 	AuthorizerCredentialsArn:       &iamLabRoleArn,
-	//ApiId
-	//AuthorizerUri
 }

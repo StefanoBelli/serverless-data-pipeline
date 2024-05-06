@@ -13,12 +13,12 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/apigatewayv2"
-	apitypes "github.com/aws/aws-sdk-go-v2/service/apigatewayv2/types"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	lmbdtypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
+	smtypes "github.com/aws/aws-sdk-go-v2/service/secretsmanager/types"
 	"github.com/aws/aws-sdk-go-v2/service/sfn"
 )
 
@@ -425,16 +425,88 @@ func deleteIntegrations(apiId string) {
 	}
 }
 
-func checkRoutesForAnyAuthorizerThenAddLambda() {
-	panic("unimplemented")
+func checkRoutesForAnyAuthorizerThenAddLambda(apiId *string) string {
+	gri := apigatewayv2.GetRoutesInput{
+		ApiId:      apiId,
+		MaxResults: &s1000}
+
+	for {
+		grOut, err := svc.apigateway.GetRoutes(dflCtx(), &gri)
+		if err != nil {
+			log.Printf("unable to get routes: %v\n", err)
+			return ""
+		}
+
+		for _, item := range grOut.Items {
+			if item.AuthorizerId != nil {
+				log.Println("found at least one route with attached authorizer")
+				log.Printf("route id: %s, authorizer id: %s",
+					*item.RouteId, *item.AuthorizerId)
+
+				return *item.AuthorizerId
+			}
+		}
+
+		gri.NextToken = grOut.NextToken
+		if gri.NextToken == nil {
+			break
+		}
+	}
+
+	log.Println("no authorizer found on any route")
+	return ""
 }
 
-func deleteAuthorizer() {
-	panic("unimplemented")
+func deleteAuthorizer(apiId *string, authorizerId *string) {
+	dai := apigatewayv2.DeleteAuthorizerInput{
+		ApiId:        apiId,
+		AuthorizerId: authorizerId,
+	}
+
+	_, err := svc.apigateway.DeleteAuthorizer(dflCtx(), &dai)
+	if err != nil {
+		log.Printf("unable to delete authorizer: %v\n", err)
+	} else {
+		log.Printf("delete authorizer %s\n", *authorizerId)
+	}
 }
 
 func deleteSecret() {
-	panic("unimplemented")
+	var two int32 = 2
+
+	lsi := secretsmanager.ListSecretsInput{
+		Filters: []smtypes.Filter{
+			{
+				Key:    smtypes.FilterNameStringTypeName,
+				Values: []string{*authorizer.Name},
+			},
+		},
+		MaxResults: &two,
+		SortOrder:  smtypes.SortOrderTypeDesc,
+	}
+
+	lso, err := svc.secretsmanager.ListSecrets(dflCtx(), &lsi)
+	if err != nil {
+		log.Printf("unable to list secrets: %v\n", err)
+	} else {
+		var seven int64 = 7
+		l := len(lso.SecretList)
+		if len(lso.SecretList) > 1 {
+			log.Printf("WARNING unexpected number of results for secrets: %d (expected 1)\n", l)
+		} else {
+			dsi := secretsmanager.DeleteSecretInput{
+				SecretId:                   lso.SecretList[0].ARN,
+				ForceDeleteWithoutRecovery: &trueVal,
+				RecoveryWindowInDays:       &seven,
+			}
+			dsOut, err := svc.secretsmanager.DeleteSecret(dflCtx(), &dsi)
+			if err != nil {
+				log.Println("unable to delete secret: %v\n", err)
+			} else {
+				log.Println("delete secret %s\n", dsOut.Name)
+			}
+		}
+	}
 }
 
 /*
