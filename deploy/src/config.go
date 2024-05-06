@@ -444,7 +444,7 @@ var integrations = []apigatewayv2.CreateIntegrationInput{
 		Description:          &criticalDataPipelineIntegration,
 		IntegrationType:      apitypes.IntegrationTypeAwsProxy,
 		IntegrationSubtype:   &startExecution,
-		PayloadFormatVersion: &oneDotZero,
+		PayloadFormatVersion: &twoDotZero,
 	},
 }
 

@@ -7,6 +7,7 @@ LAMBDAS="
     flagValidateFailed
     flagTransformFailed
     flagStoreFailed
+    authorizer
 "
 
 OUTPUT=pkgs

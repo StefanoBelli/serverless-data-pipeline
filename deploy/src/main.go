@@ -36,7 +36,7 @@ var svc AwsServiceClients
 var iamLabRoleArn string
 
 /*
- * AWS deploy
+ * AWS create resources
  */
 
 func createDynamoDbs() {
@@ -171,8 +171,24 @@ func mergeRouteWithIntegration(merge *MergeRouteIntegration) {
 	}
 }
 
+func checkAuthorizationParamsThenAddLambda(cmdline Cmdline) {
+	panic("unimplemented")
+}
+
+func createSecret(s string) {
+	panic("unimplemented")
+}
+
+func createAuthorizer() {
+	panic("unimplemented")
+}
+
+func addAuthorizerToRoutes(s string) {
+	panic("unimplemented")
+}
+
 /*
- * AWS undeploy
+ * AWS delete resources
  */
 
 func deleteApi(apiId string) {
@@ -314,6 +330,22 @@ func deleteIntegrations(apiId string) {
 	}
 }
 
+func checkRoutesForAnyAuthorizerThenAddLambda() {
+	panic("unimplemented")
+}
+
+func deleteAuthorizer() {
+	panic("unimplemented")
+}
+
+func deleteSecret() {
+	panic("unimplemented")
+}
+
+/*
+ * AWS update resources
+ */
+
 func coreUpdateLambda(name *string, arch *[]lmbdtypes.Architecture, base *string) {
 	zipBytes, err := loadFunctionZip(*base, *name)
 	if err != nil {
@@ -377,7 +409,7 @@ func updateLambdas(base string, csl string) {
 }
 
 /*
- * AWS util
+ * Various
  */
 
 func obtainIamLabRole() {
@@ -459,9 +491,11 @@ func checkAwsCredentialsFile() {
 }
 
 type Cmdline struct {
-	baseLambdaPkgs string
-	deleteAll      bool
-	updateLambdas  string
+	baseLambdaPkgs   string
+	deleteAll        bool
+	updateLambdas    string
+	authorization    string
+	authorizationKey string
 }
 
 func parseCmdline() Cmdline {
@@ -484,6 +518,21 @@ func parseCmdline() Cmdline {
 		"u",
 		"no",
 		"Comma-separated lambdas to update or all",
+	)
+
+	flag.StringVar(
+		&cmdline.authorization,
+		"a",
+		"no",
+		"Enable authentication."+
+			" Comma-separated routes (like \"store,clean,list\") which require auth or all",
+	)
+
+	flag.StringVar(
+		&cmdline.authorizationKey,
+		"k",
+		"no",
+		"Key to be entered on \"Authorization\" http header when making requests",
 	)
 
 	flag.Parse()
@@ -533,6 +582,8 @@ func main() {
 		updateLambdas(cmdline.baseLambdaPkgs, cmdline.updateLambdas)
 	} else {
 		if !cmdline.deleteAll {
+			authRequired := checkAuthorizationParamsThenAddLambda(cmdline)
+
 			obtainIamLabRole()
 
 			createDynamoDbs()
@@ -553,7 +604,14 @@ func main() {
 				log.Println("unable to merge route with integration")
 			}
 			endIgnoreInteruption(intChan)
+
+			if authRequired {
+				createSecret(cmdline.authorizationKey)
+				createAuthorizer()
+				addAuthorizerToRoutes(cmdline.authorization)
+			}
 		} else {
+			authPresent := checkRoutesForAnyAuthorizerThenAddLambda()
 			deleteDynamoDbs()
 			deleteLambdas()
 			deleteStepFunction()
@@ -568,6 +626,11 @@ func main() {
 			deleteIntegrations(apiId)
 			deleteApi(apiId)
 			endIgnoreInteruption(intChan)
+
+			if authPresent {
+				deleteSecret()
+				deleteAuthorizer()
+			}
 		}
 	}
 }

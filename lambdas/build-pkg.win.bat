@@ -8,6 +8,7 @@ set lambdas[2]=store
 set lambdas[3]=flagValidateFailed
 set lambdas[4]=flagTransformFailed
 set lambdas[5]=flagStoreFailed
+set lambdas[6]=authorizer
 
 set OUTPUT=pkgs
 
@@ -20,11 +21,11 @@ set GOARCH=amd64
 set CGO_ENABLED=0
 
 set start=0
-set end=5
+set end=6
 
 if "%~1"=="" goto all
 
-for /l %%i in (0,1,5) do (
+for /l %%i in (!start!,1,!end!) do (
     if !lambdas[%%i]! == %1 (
         Set start=%%i
         Set end=%%i
