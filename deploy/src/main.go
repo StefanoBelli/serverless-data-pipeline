@@ -491,6 +491,18 @@ func updateLambdas(base string, csl string) {
  */
 
 func getAuthorizerUri() string {
+	if len(lambdasArns) == 0 {
+		gfi := lambda.GetFunctionInput{
+			FunctionName: lambdas[len(lambdas)-1].FunctionName,
+		}
+		gfOut, err := svc.lambda.GetFunction(dflCtx(), &gfi)
+		if err != nil {
+			log.Printf("unable to get function: %v\n", err)
+			return ""
+		}
+		lambdasArns = append(lambdasArns, *gfOut.Configuration.FunctionArn)
+	}
+
 	funArn := &lambdasArns[len(lambdasArns)-1]
 	return fmt.Sprintf(
 		"arn:aws:apigateway:%s:lambda:path/2015-03-31/functions/%s/invocations",
@@ -685,8 +697,9 @@ func getRouteIdMayFail(apiId *string, routeId **string) {
 		}
 
 		for _, routeItem := range grOut.Items {
-			if routeItem.RouteKey == route.RouteKey {
+			if *routeItem.RouteKey == *route.RouteKey {
 				*routeId = routeItem.RouteId
+				return
 			}
 		}
 
@@ -710,8 +723,9 @@ func getAuthorizerIdMayFail(apiId *string, authorizerId **string) {
 		}
 
 		for _, authorizerItem := range gaOut.Items {
-			if authorizerItem.Name == authorizer.Name {
+			if *authorizerItem.Name == *authorizer.Name {
 				*authorizerId = authorizerItem.AuthorizerId
+				return
 			}
 		}
 
