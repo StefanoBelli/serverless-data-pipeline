@@ -447,25 +447,17 @@ var api = apigatewayv2.CreateApiInput{
 	ProtocolType: apitypes.ProtocolTypeHttp,
 }
 
-var integrations = []apigatewayv2.CreateIntegrationInput{
-	{
-		Description:          &criticalDataPipelineIntegration,
-		IntegrationType:      apitypes.IntegrationTypeAwsProxy,
-		IntegrationSubtype:   &startExecution,
-		PayloadFormatVersion: &oneDotZero,
-		CredentialsArn:       &iamLabRoleArn,
-	},
+var integration = apigatewayv2.CreateIntegrationInput{
+	Description:          &criticalDataPipelineIntegration,
+	IntegrationType:      apitypes.IntegrationTypeAwsProxy,
+	IntegrationSubtype:   &startExecution,
+	PayloadFormatVersion: &oneDotZero,
+	CredentialsArn:       &iamLabRoleArn,
 }
 
-var routes = []apigatewayv2.CreateRouteInput{
-	{
-		RouteKey: &postSlashStore,
-	},
+var route = apigatewayv2.CreateRouteInput{
+	RouteKey: &postSlashStore,
 }
-
-var routeArnParameterKeys = map[string]string{}
-
-var routeIntegLambda = map[string]string{}
 
 var secret = secretsmanager.CreateSecretInput{
 	Name:        &dataPipelineAuthSecret,

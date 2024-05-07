@@ -27,15 +27,6 @@ func dflCtx() context.Context {
 	return context.TODO()
 }
 
-type RouteExtraInfos struct {
-	routeId     string
-	integration struct {
-		arn          string
-		parameterKey string
-	}
-	route *apigatewayv2.CreateRouteInput
-}
-
 type AwsServiceClients struct {
 	dynamodb       *dynamodb.Client
 	apigateway     *apigatewayv2.Client
@@ -47,8 +38,8 @@ type AwsServiceClients struct {
 
 var svc AwsServiceClients
 var iamLabRoleArn string
+var routeId string
 var lambdasArns []string
-var routeExtras []RouteExtraInfos
 
 /*
  * AWS create resources
@@ -87,7 +78,7 @@ func createApi() *string {
 	}
 }
 
-func createStepFunction() {
+func createStepFunction() string {
 	lsmi := sfn.ListStateMachinesInput{MaxResults: 1000}
 
 	for {
@@ -100,9 +91,7 @@ func createStepFunction() {
 		for _, smItem := range lsmOut.StateMachines {
 			if *smItem.Name == *stateMachine.Name {
 				log.Printf("unable to create sfn %s: already exists\n", *smItem.Name)
-				routeExtras[0].integration.arn = *smItem.StateMachineArn
-				routeExtras[0].integration.parameterKey = "StateMachineArn"
-				return
+				return *smItem.StateMachineArn
 			}
 		}
 
@@ -118,10 +107,10 @@ func createStepFunction() {
 	opOut, err := svc.sfn.CreateStateMachine(dflCtx(), &stateMachine)
 	if err != nil {
 		log.Printf("unable to create step function: %v\n", err)
+		return ""
 	} else {
 		log.Printf("create sfn arn %s\n", *opOut.StateMachineArn)
-		routeExtras[0].integration.arn = *opOut.StateMachineArn
-		routeExtras[0].integration.parameterKey = "StateMachineArn"
+		return *opOut.StateMachineArn
 	}
 }
 
@@ -146,28 +135,6 @@ func createLambdas(baseDir string) {
 				log.Printf("\twith deployment package of size %d B, sha256: %s, handler: %s\n",
 					opOut.CodeSize, *opOut.CodeSha256,
 					*opOut.Handler)
-
-				for routeKey, lambdaName := range routeIntegLambda {
-					if lambdaName == *lmbd.FunctionName {
-						for i := range routeExtras[1:] {
-							rk := *routeExtras[i].route.RouteKey
-							if rk == routeKey {
-								routeExtras[i].integration.arn = *opOut.FunctionArn
-
-								for routeNameKey, arnParamKeyValue := range routeArnParameterKeys {
-									if rk == routeNameKey {
-										routeExtras[i].integration.parameterKey = arnParamKeyValue
-										break
-									}
-								}
-
-								break
-							}
-						}
-
-						break
-					}
-				}
 			}
 		}
 	}
@@ -204,50 +171,26 @@ func mergeRouteWithIntegration(merge *MergeRouteIntegration) {
 		} else {
 			log.Printf("create route %s, id: %s, target: %s\n",
 				*routeOpOut.RouteKey, *routeOpOut.RouteId, *routeOpOut.Target)
-
-			for i := range routeExtras {
-				if *routeExtras[i].route.RouteKey == *routeOpOut.RouteKey {
-					routeExtras[i].routeId = *routeOpOut.RouteId
-				}
-			}
 		}
+
+		routeId = *routeOpOut.RouteId
 	}
 }
 
-func checkAuthorizationParams(cmdline Cmdline) (bool, []*apigatewayv2.CreateRouteInput) {
+func checkAuthorizationParams(cmdline Cmdline) bool {
 	if cmdline.authorization != "no" {
-		var authRoutes []*apigatewayv2.CreateRouteInput
-
-		userRoutes := strings.Split(cmdline.authorization, ",")
-
-		for i := range userRoutes {
-			tmpRoute := strings.TrimSpace(userRoutes[i])
-			tmpRoute = strings.TrimLeft(tmpRoute, "/")
-			if len(tmpRoute) == 0 {
-				log.Println("ignoring empty route for authorization")
-			} else {
-				for j := range routes {
-					lastSlashIdx := strings.LastIndex(*routes[j].RouteKey, "/")
-					if (*routes[j].RouteKey)[lastSlashIdx+1:] == tmpRoute {
-						authRoutes = append(authRoutes, &routes[j])
-						break
-					}
-				}
-			}
-		}
-
 		if cmdline.authorizationKey == "no" {
 			log.Fatalln("key is required along with authorization")
 		}
 
-		return true, authRoutes
+		return true
 	} else {
 		if cmdline.authorizationKey != "no" {
 			log.Println("ignoring key (no authorization enabled)")
 		}
 	}
 
-	return false, nil
+	return false
 }
 
 func addAuthorizerLambda() {
@@ -305,41 +248,20 @@ func createAuthorizer(apiId *string) string {
 	return *caOut.AuthorizerId
 }
 
-func addAuthorizerToRoute(
-	rt *apigatewayv2.CreateRouteInput, authorizerId *string) {
-
-	var matchingRoute RouteExtraInfos
-
-	for _, rid := range routeExtras {
-		if rid.route == rt {
-			matchingRoute = rid
-			break
-		}
+func addAuthorizerToRoute(authorizerId *string) {
+	uri := apigatewayv2.UpdateRouteInput{
+		ApiId:             route.ApiId,
+		RouteId:           &routeId,
+		AuthorizationType: apigtypes.AuthorizationTypeCustom,
+		AuthorizerId:      authorizerId,
 	}
 
-	if matchingRoute.route == nil {
-		log.Printf("unable to find route id (route key: %s)\n", *rt.RouteKey)
-		return
-	}
-
-	for _, route := range routes {
-		if route.RouteKey == rt.RouteKey {
-			uri := apigatewayv2.UpdateRouteInput{
-				ApiId:             rt.ApiId,
-				RouteId:           &matchingRoute.routeId,
-				AuthorizationType: apigtypes.AuthorizationTypeCustom,
-				AuthorizerId:      authorizerId,
-			}
-
-			urOut, err := svc.apigateway.UpdateRoute(dflCtx(), &uri)
-			if err != nil {
-				log.Printf("unable to update route %s: %v\n", *rt.RouteKey, err)
-			} else {
-				log.Printf("update route %s (adding authorizer id: %s, with type: %s)\n",
-					*urOut.RouteKey, *urOut.AuthorizerId, urOut.AuthorizationType)
-			}
-			break
-		}
+	urOut, err := svc.apigateway.UpdateRoute(dflCtx(), &uri)
+	if err != nil {
+		log.Printf("unable to update route %s: %v\n", *route.RouteKey, err)
+	} else {
+		log.Printf("update route %s (adding authorizer id: %s, with type: %s)\n",
+			*urOut.RouteKey, *urOut.AuthorizerId, urOut.AuthorizationType)
 	}
 }
 
@@ -428,19 +350,17 @@ func deleteRoutes(apiId string) {
 			log.Printf("unable to list routes: %v\n", err)
 			break
 		} else {
-			for _, myRoute := range routes {
-				for _, route := range grOut.Items {
-					if *myRoute.RouteKey == *route.RouteKey {
-						dri := apigatewayv2.DeleteRouteInput{
-							ApiId: &apiId, RouteId: route.RouteId}
+			for _, itemRoute := range grOut.Items {
+				if *route.RouteKey == *itemRoute.RouteKey {
+					dri := apigatewayv2.DeleteRouteInput{
+						ApiId: &apiId, RouteId: itemRoute.RouteId}
 
-						_, err := svc.apigateway.DeleteRoute(dflCtx(), &dri)
-						if err != nil {
-							log.Printf("unable to delete route: %v\n", err)
-						} else {
-							log.Printf("delete route %s (with api id: %s)\n",
-								*dri.RouteId, *dri.ApiId)
-						}
+					_, err := svc.apigateway.DeleteRoute(dflCtx(), &dri)
+					if err != nil {
+						log.Printf("unable to delete route: %v\n", err)
+					} else {
+						log.Printf("delete route %s (with api id: %s)\n",
+							*dri.RouteId, *dri.ApiId)
 					}
 				}
 			}
@@ -462,19 +382,18 @@ func deleteIntegrations(apiId string) {
 			log.Printf("unable to list integrations: %v\n", err)
 			break
 		} else {
-			for _, myIntegration := range integrations {
-				for _, integration := range giOut.Items {
-					if *integration.Description == *myIntegration.Description {
-						dii := apigatewayv2.DeleteIntegrationInput{
-							ApiId: &apiId, IntegrationId: integration.IntegrationId}
-
-						_, err := svc.apigateway.DeleteIntegration(dflCtx(), &dii)
-						if err != nil {
-							log.Printf("unable to delete integration: %v\n", err)
-						} else {
-							log.Printf("delete integration %s (with api id: %s)\n",
-								*dii.IntegrationId, *dii.ApiId)
-						}
+			for _, itemIntegration := range giOut.Items {
+				if *integration.Description == *itemIntegration.Description {
+					dii := apigatewayv2.DeleteIntegrationInput{
+						ApiId:         &apiId,
+						IntegrationId: itemIntegration.IntegrationId,
+					}
+					_, err := svc.apigateway.DeleteIntegration(dflCtx(), &dii)
+					if err != nil {
+						log.Printf("unable to delete integration: %v\n", err)
+					} else {
+						log.Printf("delete integration %s (with api id: %s)\n",
+							*dii.IntegrationId, *dii.ApiId)
 					}
 				}
 			}
@@ -788,7 +707,7 @@ func recoverIfNeeded(apiId **string) {
 
 	if len(lambdasArns) == 0 {
 		gfi := lambda.GetFunctionInput{
-			FunctionName: lambdas[len(routes)-1].FunctionName,
+			FunctionName: lambdas[len(lambdas)-1].FunctionName,
 		}
 		gfOut, err := svc.lambda.GetFunction(dflCtx(), &gfi)
 		if err == nil {
@@ -799,30 +718,16 @@ func recoverIfNeeded(apiId **string) {
 	}
 }
 
-func mergeAllRoutesWithTheirIntegration(apiId *string) {
-	for i := range routeExtras {
-		if len(routeExtras[i].integration.arn) != 0 {
-			mri := MergeRouteIntegration{
-				apiId:           apiId,
-				integArn:        &routeExtras[i].integration.arn,
-				arnParameterKey: &routeExtras[i].integration.parameterKey,
-				integration:     &integrations[i],
-				route:           &routes[i],
-			}
-			mergeRouteWithIntegration(&mri)
-		} else {
-			log.Printf("WARNING: no integration ARN for route %s\n",
-				*routes[i].RouteKey)
-		}
+func mergeRouteWithItsIntegration(apiId *string, sfnArn *string) {
+	paramKey := "StateMachineArn"
+	mri := MergeRouteIntegration{
+		apiId:           apiId,
+		integArn:        sfnArn,
+		arnParameterKey: &paramKey,
+		integration:     &integration,
+		route:           &route,
 	}
-}
-
-func initRouteExtras() {
-	for i := range routes {
-		routeExtras = append(routeExtras, RouteExtraInfos{
-			route: &routes[i],
-		})
-	}
+	mergeRouteWithIntegration(&mri)
 }
 
 func main() {
@@ -836,22 +741,20 @@ func main() {
 		updateLambdas(cmdline.baseLambdaPkgs, cmdline.updateLambdas)
 	} else {
 		if !cmdline.deleteAll {
-			authRequired, routesThatNeedAuth :=
+			authRequired :=
 				checkAuthorizationParams(cmdline)
 
 			obtainIamLabRole()
-
-			initRouteExtras()
 
 			createDynamoDbs()
 			if authRequired {
 				addAuthorizerLambda()
 			}
 			createLambdas(cmdline.baseLambdaPkgs)
-			createStepFunction()
+			sfnArn := createStepFunction()
 			intChan := beginIgnoreInterruption()
 			apiId := createApi()
-			mergeAllRoutesWithTheirIntegration(apiId)
+			mergeRouteWithItsIntegration(apiId, &sfnArn)
 			endIgnoreInteruption(intChan)
 
 			if authRequired {
@@ -861,10 +764,7 @@ func main() {
 				authorizerId := createAuthorizer(apiId)
 
 				if authorizerId != "" {
-					for _, route := range routesThatNeedAuth {
-						addAuthorizerToRoute(route, &authorizerId)
-					}
-
+					addAuthorizerToRoute(&authorizerId)
 				}
 			}
 		} else {
