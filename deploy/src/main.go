@@ -181,8 +181,8 @@ func addAuthorizerLambda() {
 	})
 }
 
-func createOrUpdateSecret(key string) {
-	secret.SecretBinary = []byte(key)
+func createOrUpdateSecret(key *string) {
+	secret.SecretBinary = []byte(*key)
 	csOut, err := svc.secretsmanager.CreateSecret(dflCtx(), &secret)
 	if err != nil {
 		psvi := secretsmanager.PutSecretValueInput{
@@ -194,16 +194,16 @@ func createOrUpdateSecret(key string) {
 		if err != nil {
 			log.Printf("unable to create or update secret: %v\n", err)
 		} else {
-			log.Printf("update secret (key [not shown]) for %s, arn: %s\n",
+			log.Printf("update secret %s, arn: %s, key: [not shown]\n",
 				*psvOut.Name, *psvOut.ARN)
 		}
 	} else {
-		log.Printf("create secret %s (key [not shown]), arn: %s\n",
+		log.Printf("create secret %s, arn: %s, key: [not shown]\n",
 			*csOut.Name, *csOut.ARN)
 	}
 }
 
-func createAuthorizer(apiId *string) string {
+func createAuthorizer(apiId *string) *string {
 	authUri := getAuthorizerUri()
 	authorizer.ApiId = apiId
 	authorizer.AuthorizerUri = &authUri
@@ -211,8 +211,7 @@ func createAuthorizer(apiId *string) string {
 	caOut, err := svc.apigateway.CreateAuthorizer(dflCtx(), &authorizer)
 	if err != nil {
 		log.Printf("unable to create authorizer: %v", err)
-
-		return ""
+		return nil
 	}
 
 	log.Printf("create authorizer %s, id: %s, credArn: %s, "+
@@ -221,7 +220,7 @@ func createAuthorizer(apiId *string) string {
 		*caOut.AuthorizerResultTtlInSeconds, caOut.AuthorizerType, *caOut.AuthorizerUri,
 		*caOut.AuthorizerPayloadFormatVersion)
 
-	return *caOut.AuthorizerId
+	return caOut.AuthorizerId
 }
 
 func addAuthorizerToRoute(authorizerId *string, routeId *string) {
@@ -245,8 +244,8 @@ func addAuthorizerToRoute(authorizerId *string, routeId *string) {
  * AWS delete resources
  */
 
-func deleteApi(apiId string) {
-	dai := apigatewayv2.DeleteApiInput{ApiId: &apiId}
+func deleteApi(apiId *string) {
+	dai := apigatewayv2.DeleteApiInput{ApiId: apiId}
 	_, err := svc.apigateway.DeleteApi(dflCtx(), &dai)
 	if err != nil {
 		log.Printf("unable to delete api: %v\n", err)
@@ -317,8 +316,8 @@ func deleteStepFunction() {
 	log.Printf("unable to find sfn %s\n", *stateMachine.Name)
 }
 
-func deleteRoutes(apiId string) {
-	gri := apigatewayv2.GetRoutesInput{ApiId: &apiId, MaxResults: &s1000}
+func deleteRoutes(apiId *string) {
+	gri := apigatewayv2.GetRoutesInput{ApiId: apiId, MaxResults: &s1000}
 
 	for {
 		grOut, err := svc.apigateway.GetRoutes(dflCtx(), &gri)
@@ -329,7 +328,7 @@ func deleteRoutes(apiId string) {
 			for _, itemRoute := range grOut.Items {
 				if *route.RouteKey == *itemRoute.RouteKey {
 					dri := apigatewayv2.DeleteRouteInput{
-						ApiId: &apiId, RouteId: itemRoute.RouteId}
+						ApiId: apiId, RouteId: itemRoute.RouteId}
 
 					_, err := svc.apigateway.DeleteRoute(dflCtx(), &dri)
 					if err != nil {
@@ -349,8 +348,8 @@ func deleteRoutes(apiId string) {
 	}
 }
 
-func deleteIntegrations(apiId string) {
-	gii := apigatewayv2.GetIntegrationsInput{ApiId: &apiId, MaxResults: &s1000}
+func deleteIntegrations(apiId *string) {
+	gii := apigatewayv2.GetIntegrationsInput{ApiId: apiId, MaxResults: &s1000}
 
 	for {
 		giOut, err := svc.apigateway.GetIntegrations(dflCtx(), &gii)
@@ -361,7 +360,7 @@ func deleteIntegrations(apiId string) {
 			for _, itemIntegration := range giOut.Items {
 				if *integration.Description == *itemIntegration.Description {
 					dii := apigatewayv2.DeleteIntegrationInput{
-						ApiId:         &apiId,
+						ApiId:         apiId,
 						IntegrationId: itemIntegration.IntegrationId,
 					}
 					_, err := svc.apigateway.DeleteIntegration(dflCtx(), &dii)
@@ -389,7 +388,7 @@ func deleteSecret() {
 		Filters: []smtypes.Filter{
 			{
 				Key:    smtypes.FilterNameStringTypeName,
-				Values: []string{*authorizer.Name},
+				Values: []string{*secret.Name},
 			},
 		},
 		MaxResults: &two,
@@ -407,9 +406,8 @@ func deleteSecret() {
 			log.Printf("WARNING unexpected number of results for secrets: %d (expected 1)\n", numSecrets)
 		} else if numSecrets == 1 {
 			dsi := secretsmanager.DeleteSecretInput{
-				SecretId:                   lso.SecretList[0].ARN,
-				ForceDeleteWithoutRecovery: &trueVal,
-				RecoveryWindowInDays:       &seven,
+				SecretId:             lso.SecretList[0].ARN,
+				RecoveryWindowInDays: &seven,
 			}
 			dsOut, err := svc.secretsmanager.DeleteSecret(dflCtx(), &dsi)
 			if err != nil {
@@ -510,18 +508,18 @@ func obtainIamLabRole() {
 	iamLabRoleArn = *ans.Role.Arn
 }
 
-func getApiId() (string, error) {
+func getApiId() (*string, error) {
 	gasi := apigatewayv2.GetApisInput{MaxResults: &s1000}
 
 	for {
 		gaso, err := svc.apigateway.GetApis(dflCtx(), &gasi)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 
 		for _, apiItem := range gaso.Items {
 			if *api.Name == *apiItem.Name {
-				return *apiItem.ApiId, nil
+				return apiItem.ApiId, nil
 			}
 		}
 
@@ -531,7 +529,7 @@ func getApiId() (string, error) {
 		}
 	}
 
-	return "", errors.New("unable to find api")
+	return nil, errors.New("unable to find api")
 }
 
 func getStateMachineDefinition() string {
@@ -662,30 +660,6 @@ func endIgnoreInteruption(c chan os.Signal) {
 	close(c)
 }
 
-func recoverIfNeeded(apiId **string) {
-	if *apiId == nil {
-		recoveredApiId, err := getApiId()
-		if err != nil {
-			log.Fatalf("unable to proceed, no api id: %v", err)
-		}
-
-		*apiId = new(string)
-		**apiId = recoveredApiId
-	}
-
-	if len(lambdasArns) == 0 {
-		gfi := lambda.GetFunctionInput{
-			FunctionName: lambdas[len(lambdas)-1].FunctionName,
-		}
-		gfOut, err := svc.lambda.GetFunction(dflCtx(), &gfi)
-		if err == nil {
-			lambdasArns = append(lambdasArns, *gfOut.Configuration.FunctionArn)
-		} else {
-			log.Fatalf("unable to proceed, no authorizer-lambda arn: %v", err)
-		}
-	}
-}
-
 func main() {
 	checkAwsCredentialsFile()
 
@@ -713,19 +687,23 @@ func main() {
 			endIgnoreInteruption(intChan)
 
 			if authRequired {
-				createOrUpdateSecret(cmdline.authorizationKey)
-				recoverIfNeeded(&apiId)
+				createOrUpdateSecret(&cmdline.authorizationKey)
 
 				authorizerId := createAuthorizer(apiId)
 
-				if authorizerId != "" {
-					addAuthorizerToRoute(&authorizerId, routeId)
+				if authorizerId != nil {
+					addAuthorizerToRoute(authorizerId, routeId)
 				}
 			}
 		} else {
 			deleteTables()
 			deleteLambdas()
 			deleteStepFunction()
+			if cmdline.forceSecretDel {
+				deleteSecret() //try deletion anyway
+			} else {
+				log.Println("skipping secret deletion")
+			}
 			intChan := beginIgnoreInterruption()
 			apiId, err := getApiId()
 			if err != nil {
@@ -737,12 +715,6 @@ func main() {
 			deleteIntegrations(apiId)
 			deleteApi(apiId)
 			endIgnoreInteruption(intChan)
-
-			if cmdline.forceSecretDel {
-				deleteSecret() //try deletion anyway
-			} else {
-				log.Println("skipping secret deletion")
-			}
 		}
 	}
 }
