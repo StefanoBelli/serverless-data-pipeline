@@ -62,7 +62,6 @@ func createApi() *string {
 	_, err := getApiId()
 	if err == nil {
 		log.Printf("an api with this name: %s already exists\n", *api.Name)
-		log.Println("auto-skipping route and integration creation")
 		return nil
 	}
 
