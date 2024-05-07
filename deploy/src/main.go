@@ -178,7 +178,7 @@ func mergeRouteWithIntegration(merge *MergeRouteIntegration) {
 }
 
 func checkAuthorizationParams(cmdline Cmdline) bool {
-	if cmdline.authorization != "no" {
+	if cmdline.authorization {
 		if cmdline.authorizationKey == "no" {
 			log.Fatalln("key is required along with authorization")
 		}
@@ -605,7 +605,7 @@ type Cmdline struct {
 	baseLambdaPkgs   string
 	deleteAll        bool
 	updateLambdas    string
-	authorization    string
+	authorization    bool
 	authorizationKey string
 	forceSecretDel   bool
 }
@@ -632,12 +632,11 @@ func parseCmdline() Cmdline {
 		"Comma-separated lambdas to update or all",
 	)
 
-	flag.StringVar(
+	flag.BoolVar(
 		&cmdline.authorization,
 		"a",
-		"no",
-		"Enable authentication."+
-			" Comma-separated routes (like \"store,clean,list\") which require auth or all",
+		false,
+		"Enable authentication",
 	)
 
 	flag.StringVar(
