@@ -160,6 +160,7 @@ func mergeRouteWithIntegration(apiId *string, sfnArn *string) *string {
 		routeOpOut, err := svc.apigateway.CreateRoute(dflCtx(), &route)
 		if err != nil {
 			log.Printf("unable to create route: %v\n", err)
+			return nil
 		} else {
 			log.Printf("create route %s, id: %s, target: %s\n",
 				*routeOpOut.RouteKey, *routeOpOut.RouteId, *routeOpOut.Target)
@@ -660,6 +661,67 @@ func endIgnoreInteruption(c chan os.Signal) {
 	close(c)
 }
 
+func getApiIdMayFail(apiId **string) {
+	newApiId, err := getApiId()
+	if err != nil {
+		log.Println("unable to get api id")
+		log.Println("cannot go further")
+		log.Fatalf("stopping immediately (reason: %v)", err)
+	}
+
+	*apiId = newApiId
+}
+
+func getRouteIdMayFail(apiId *string, routeId **string) {
+	gri := apigatewayv2.GetRoutesInput{
+		ApiId:      apiId,
+		MaxResults: &s1000,
+	}
+
+	for {
+		grOut, err := svc.apigateway.GetRoutes(dflCtx(), &gri)
+		if err != nil {
+			log.Fatalf("unable to get existing routes: %v", err)
+		}
+
+		for _, routeItem := range grOut.Items {
+			if routeItem.RouteKey == route.RouteKey {
+				*routeId = routeItem.RouteId
+			}
+		}
+
+		gri.NextToken = grOut.NextToken
+		if gri.NextToken == nil {
+			log.Fatalln("unable to find any matching route")
+		}
+	}
+}
+
+func getAuthorizerIdMayFail(apiId *string, authorizerId **string) {
+	gai := apigatewayv2.GetAuthorizersInput{
+		ApiId:      apiId,
+		MaxResults: &s1000,
+	}
+
+	for {
+		gaOut, err := svc.apigateway.GetAuthorizers(dflCtx(), &gai)
+		if err != nil {
+			log.Fatalf("unable to get existing authorizers: %v", err)
+		}
+
+		for _, authorizerItem := range gaOut.Items {
+			if authorizerItem.Name == authorizer.Name {
+				*authorizerId = authorizerItem.AuthorizerId
+			}
+		}
+
+		gai.NextToken = gaOut.NextToken
+		if gai.NextToken == nil {
+			log.Fatalln("unable to find any matching authorizer")
+		}
+	}
+}
+
 func main() {
 	checkAwsCredentialsFile()
 
@@ -676,44 +738,78 @@ func main() {
 			obtainIamLabRole()
 
 			createTables()
+
 			if authRequired {
 				addAuthorizerLambda()
+				createOrUpdateSecret(&cmdline.authorizationKey)
 			}
+
 			createLambdas(cmdline.baseLambdaPkgs)
+
 			sfnArn := createStepFunction()
+			if sfnArn == nil {
+				log.Fatalln("no sfn arn - unable to proceed")
+			}
+
 			intChan := beginIgnoreInterruption()
+
 			apiId := createApi()
+
+			if apiId == nil {
+				getApiIdMayFail(&apiId)
+			}
+
+			//dependency apiId ok
+			//dependency sfnArn ok
 			routeId := mergeRouteWithIntegration(apiId, sfnArn)
+
 			endIgnoreInteruption(intChan)
 
 			if authRequired {
-				createOrUpdateSecret(&cmdline.authorizationKey)
-
+				//dependency apiId ok
 				authorizerId := createAuthorizer(apiId)
 
-				if authorizerId != nil {
-					addAuthorizerToRoute(authorizerId, routeId)
+				if authorizerId == nil {
+					//dependency apiId ok
+					getAuthorizerIdMayFail(apiId, &authorizerId)
 				}
+
+				if routeId == nil {
+					//dependency apiId ok
+					getRouteIdMayFail(apiId, &routeId)
+				}
+
+				//dependency authorizerId ok
+				//dependency routeId ok
+				addAuthorizerToRoute(authorizerId, routeId)
 			}
 		} else {
 			deleteTables()
+
 			deleteLambdas()
+
 			deleteStepFunction()
+
 			if cmdline.forceSecretDel {
 				deleteSecret() //try deletion anyway
 			} else {
 				log.Println("skipping secret deletion")
 			}
+
 			intChan := beginIgnoreInterruption()
-			apiId, err := getApiId()
-			if err != nil {
-				log.Println("unable to get api id")
-				log.Println("cannot go further")
-				log.Fatalf("stopping immediately (reason: %v)", err)
-			}
+
+			var apiId *string
+			getApiIdMayFail(&apiId)
+
+			//dependency apiId ok
 			deleteRoutes(apiId)
+
+			//dependency apiId ok
 			deleteIntegrations(apiId)
+
+			//dependency apiId ok
 			deleteApi(apiId)
+
 			endIgnoreInteruption(intChan)
 		}
 	}
