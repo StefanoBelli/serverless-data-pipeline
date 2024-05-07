@@ -38,16 +38,15 @@ type AwsServiceClients struct {
 
 var svc AwsServiceClients
 var iamLabRoleArn string
-var routeId string
 var lambdasArns []string
 
 /*
  * AWS create resources
  */
 
-func createDynamoDbs() {
-	for _, dbs := range dynamoDbTables {
-		opOut, err := svc.dynamodb.CreateTable(dflCtx(), &dbs)
+func createTables() {
+	for _, table := range tables {
+		opOut, err := svc.dynamodb.CreateTable(dflCtx(), &table)
 		if err != nil {
 			log.Printf("unable to create dynamodb table: %v\n", err)
 		} else {
@@ -78,7 +77,7 @@ func createApi() *string {
 	}
 }
 
-func createStepFunction() string {
+func createStepFunction() *string {
 	lsmi := sfn.ListStateMachinesInput{MaxResults: 1000}
 
 	for {
@@ -91,7 +90,7 @@ func createStepFunction() string {
 		for _, smItem := range lsmOut.StateMachines {
 			if *smItem.Name == *stateMachine.Name {
 				log.Printf("unable to create sfn %s: already exists\n", *smItem.Name)
-				return *smItem.StateMachineArn
+				return smItem.StateMachineArn
 			}
 		}
 
@@ -107,10 +106,10 @@ func createStepFunction() string {
 	opOut, err := svc.sfn.CreateStateMachine(dflCtx(), &stateMachine)
 	if err != nil {
 		log.Printf("unable to create step function: %v\n", err)
-		return ""
+		return nil
 	} else {
 		log.Printf("create sfn arn %s\n", *opOut.StateMachineArn)
-		return *opOut.StateMachineArn
+		return opOut.StateMachineArn
 	}
 }
 
@@ -140,32 +139,25 @@ func createLambdas(baseDir string) {
 	}
 }
 
-type MergeRouteIntegration struct {
-	apiId           *string
-	arnParameterKey *string
-	integArn        *string
-	integration     *apigatewayv2.CreateIntegrationInput
-	route           *apigatewayv2.CreateRouteInput
-}
+func mergeRouteWithIntegration(apiId *string, sfnArn *string) *string {
+	integration.ApiId = apiId
+	integration.RequestParameters = make(map[string]string)
+	integration.RequestParameters["StateMachineArn"] = *sfnArn
 
-func mergeRouteWithIntegration(merge *MergeRouteIntegration) {
-	merge.integration.ApiId = merge.apiId
-	merge.integration.RequestParameters = make(map[string]string)
-	merge.integration.RequestParameters[*merge.arnParameterKey] = *merge.integArn
-
-	integOpOut, err := svc.apigateway.CreateIntegration(dflCtx(), merge.integration)
+	integOpOut, err := svc.apigateway.CreateIntegration(dflCtx(), &integration)
 	if err != nil {
 		log.Printf("unable to create integration: %v\n", err)
+		return nil
 	} else {
 		log.Printf("create integration %s, conn. type: %s, int. type: %s\n",
 			*integOpOut.IntegrationId, integOpOut.ConnectionType,
 			integOpOut.IntegrationType)
 
-		merge.route.ApiId = merge.apiId
+		route.ApiId = apiId
 		myTarget := "integrations/" + *integOpOut.IntegrationId
-		merge.route.Target = &myTarget
+		route.Target = &myTarget
 
-		routeOpOut, err := svc.apigateway.CreateRoute(dflCtx(), merge.route)
+		routeOpOut, err := svc.apigateway.CreateRoute(dflCtx(), &route)
 		if err != nil {
 			log.Printf("unable to create route: %v\n", err)
 		} else {
@@ -173,24 +165,8 @@ func mergeRouteWithIntegration(merge *MergeRouteIntegration) {
 				*routeOpOut.RouteKey, *routeOpOut.RouteId, *routeOpOut.Target)
 		}
 
-		routeId = *routeOpOut.RouteId
+		return routeOpOut.RouteId
 	}
-}
-
-func checkAuthorizationParams(cmdline Cmdline) bool {
-	if cmdline.authorization {
-		if cmdline.authorizationKey == "no" {
-			log.Fatalln("key is required along with authorization")
-		}
-
-		return true
-	} else {
-		if cmdline.authorizationKey != "no" {
-			log.Println("ignoring key (no authorization enabled)")
-		}
-	}
-
-	return false
 }
 
 func addAuthorizerLambda() {
@@ -248,10 +224,10 @@ func createAuthorizer(apiId *string) string {
 	return *caOut.AuthorizerId
 }
 
-func addAuthorizerToRoute(authorizerId *string) {
+func addAuthorizerToRoute(authorizerId *string, routeId *string) {
 	uri := apigatewayv2.UpdateRouteInput{
 		ApiId:             route.ApiId,
-		RouteId:           &routeId,
+		RouteId:           routeId,
 		AuthorizationType: apigtypes.AuthorizationTypeCustom,
 		AuthorizerId:      authorizerId,
 	}
@@ -279,9 +255,9 @@ func deleteApi(apiId string) {
 	}
 }
 
-func deleteDynamoDbs() {
-	for _, ddbTable := range dynamoDbTables {
-		dti := dynamodb.DeleteTableInput{TableName: ddbTable.TableName}
+func deleteTables() {
+	for _, table := range tables {
+		dti := dynamodb.DeleteTableInput{TableName: table.TableName}
 		opOut, err := svc.dynamodb.DeleteTable(dflCtx(), &dti)
 		if err != nil {
 			log.Printf("unable to delete table %s: %v\n", *dti.TableName, err)
@@ -605,7 +581,6 @@ type Cmdline struct {
 	baseLambdaPkgs   string
 	deleteAll        bool
 	updateLambdas    string
-	authorization    bool
 	authorizationKey string
 	forceSecretDel   bool
 }
@@ -628,22 +603,16 @@ func parseCmdline() Cmdline {
 	flag.StringVar(
 		&cmdline.updateLambdas,
 		"u",
-		"no",
+		"",
 		"Comma-separated lambdas to update or all",
-	)
-
-	flag.BoolVar(
-		&cmdline.authorization,
-		"a",
-		false,
-		"Enable authentication",
 	)
 
 	flag.StringVar(
 		&cmdline.authorizationKey,
-		"k",
-		"no",
-		"Key to be entered on \"Authorization\" http header when making requests",
+		"a",
+		"",
+		"Enable authorization. Key is to be entered "+
+			"on \"Authorization\" http header when making requests",
 	)
 
 	flag.BoolVar(
@@ -717,18 +686,6 @@ func recoverIfNeeded(apiId **string) {
 	}
 }
 
-func mergeRouteWithItsIntegration(apiId *string, sfnArn *string) {
-	paramKey := "StateMachineArn"
-	mri := MergeRouteIntegration{
-		apiId:           apiId,
-		integArn:        sfnArn,
-		arnParameterKey: &paramKey,
-		integration:     &integration,
-		route:           &route,
-	}
-	mergeRouteWithIntegration(&mri)
-}
-
 func main() {
 	checkAwsCredentialsFile()
 
@@ -736,16 +693,15 @@ func main() {
 
 	loadAwsConfig()
 
-	if cmdline.updateLambdas != "no" {
+	if len(cmdline.updateLambdas) > 0 {
 		updateLambdas(cmdline.baseLambdaPkgs, cmdline.updateLambdas)
 	} else {
 		if !cmdline.deleteAll {
-			authRequired :=
-				checkAuthorizationParams(cmdline)
+			authRequired := len(cmdline.authorizationKey) > 0
 
 			obtainIamLabRole()
 
-			createDynamoDbs()
+			createTables()
 			if authRequired {
 				addAuthorizerLambda()
 			}
@@ -753,7 +709,7 @@ func main() {
 			sfnArn := createStepFunction()
 			intChan := beginIgnoreInterruption()
 			apiId := createApi()
-			mergeRouteWithItsIntegration(apiId, &sfnArn)
+			routeId := mergeRouteWithIntegration(apiId, sfnArn)
 			endIgnoreInteruption(intChan)
 
 			if authRequired {
@@ -763,11 +719,11 @@ func main() {
 				authorizerId := createAuthorizer(apiId)
 
 				if authorizerId != "" {
-					addAuthorizerToRoute(&authorizerId)
+					addAuthorizerToRoute(&authorizerId, routeId)
 				}
 			}
 		} else {
-			deleteDynamoDbs()
+			deleteTables()
 			deleteLambdas()
 			deleteStepFunction()
 			intChan := beginIgnoreInterruption()

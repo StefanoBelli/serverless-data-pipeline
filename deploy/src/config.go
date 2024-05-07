@@ -313,7 +313,7 @@ var SFN_AML_DEFINITION_FMT = `
 }
 `
 
-var dynamoDbTables = []dynamodb.CreateTableInput{
+var tables = []dynamodb.CreateTableInput{
 	{
 		TableName: &validationStatus,
 		AttributeDefinitions: []ddbtypes.AttributeDefinition{
