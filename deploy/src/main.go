@@ -144,30 +144,75 @@ func mergeRouteWithIntegration(apiId *string, sfnArn *string) *string {
 	integration.RequestParameters = make(map[string]string)
 	integration.RequestParameters["StateMachineArn"] = *sfnArn
 
-	integOpOut, err := svc.apigateway.CreateIntegration(dflCtx(), &integration)
-	if err != nil {
-		log.Printf("unable to create integration: %v\n", err)
-		return nil
-	} else {
-		log.Printf("create integration %s, conn. type: %s, int. type: %s\n",
-			*integOpOut.IntegrationId, integOpOut.ConnectionType,
-			integOpOut.IntegrationType)
+	var head string
+	var integOpOut *apigatewayv2.CreateIntegrationOutput
 
-		route.ApiId = apiId
-		myTarget := "integrations/" + *integOpOut.IntegrationId
-		route.Target = &myTarget
+	gii := apigatewayv2.GetIntegrationsInput{
+		ApiId:      apiId,
+		MaxResults: &s1000,
+	}
 
-		routeOpOut, err := svc.apigateway.CreateRoute(dflCtx(), &route)
+	found := false
+
+	for {
+		giOut, err := svc.apigateway.GetIntegrations(dflCtx(), &gii)
 		if err != nil {
-			log.Printf("unable to create route: %v\n", err)
-			return nil
-		} else {
-			log.Printf("create route %s, id: %s, target: %s\n",
-				*routeOpOut.RouteKey, *routeOpOut.RouteId, *routeOpOut.Target)
+			log.Printf("unable to get integrations: %s\n", err)
+			break
 		}
 
-		return routeOpOut.RouteId
+		for _, integrationItem := range giOut.Items {
+			if *integrationItem.Description == *integration.Description &&
+				integrationItem.IntegrationType == integration.IntegrationType &&
+				*integrationItem.IntegrationSubtype == *integration.IntegrationSubtype &&
+				*integrationItem.CredentialsArn == *integration.CredentialsArn {
+
+				integOpOut = new(apigatewayv2.CreateIntegrationOutput)
+				integOpOut.IntegrationId = integrationItem.IntegrationId
+				integOpOut.ConnectionType = integrationItem.ConnectionType
+				integOpOut.IntegrationType = integrationItem.IntegrationType
+
+				head = "existing"
+				found = true
+				break
+			}
+		}
+
+		gii.NextToken = giOut.NextToken
+		if found || gii.NextToken == nil {
+			break
+		}
 	}
+
+	if !found {
+		var err error
+		integOpOut, err = svc.apigateway.CreateIntegration(dflCtx(), &integration)
+		if err != nil {
+			log.Printf("unable to create integration: %v\n", err)
+			return nil
+		}
+
+		head = "create"
+	}
+
+	log.Printf("%s integration %s, conn. type: %s, int. type: %s\n",
+		head, *integOpOut.IntegrationId, integOpOut.ConnectionType,
+		integOpOut.IntegrationType)
+
+	route.ApiId = apiId
+	myTarget := "integrations/" + *integOpOut.IntegrationId
+	route.Target = &myTarget
+
+	routeOpOut, err := svc.apigateway.CreateRoute(dflCtx(), &route)
+	if err != nil {
+		log.Printf("unable to create route: %v\n", err)
+		return nil
+	} else {
+		log.Printf("create route %s, id: %s, target: %s\n",
+			*routeOpOut.RouteKey, *routeOpOut.RouteId, *routeOpOut.Target)
+	}
+
+	return routeOpOut.RouteId
 }
 
 func addAuthorizerLambda() {
