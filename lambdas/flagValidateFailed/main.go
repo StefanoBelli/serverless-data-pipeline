@@ -4,12 +4,12 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 )
 
-type MyEvent struct {
-	Content string `json:"content"`
+type ValidationFailFlagRequest struct {
+	ValidationIdx int `json:"validationIdx"`
 }
 
-func handler(e MyEvent) (string, error) {
-	return e.Content, nil
+func handler(e ValidationFailFlagRequest) (bool, error) {
+	return true, nil
 }
 
 func main() {

@@ -4,12 +4,21 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 )
 
-type MyEvent struct {
-	Content string `json:"content"`
+type TupleTransformationRequest struct {
+	Success       bool   `json:"success"`
+	ValidationIdx int    `json:"validationIdx"`
+	Tuple         string `json:"tuple"`
 }
 
-func handler(e MyEvent) (string, error) {
-	return e.Content, nil
+type TupleTransformationResponse struct {
+	Success           bool   `json:"success"`
+	ValidationIdx     int    `json:"validationIdx"`
+	TransformationIdx int    `json:"transformationIdx"`
+	Tuple             string `json:"tuple"`
+}
+
+func handler(e TupleTransformationRequest) (TupleTransformationResponse, error) {
+	return TupleTransformationResponse{Success: true, ValidationIdx: 1, TransformationIdx: 1, Tuple: ""}, nil
 }
 
 func main() {
