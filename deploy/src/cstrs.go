@@ -25,5 +25,5 @@ var s1000 = "1000"
 var dataPipelineAuthSecret = "DataPipelineAuthKey"
 var secretDescription = "secret for data pipeline HTTP methods"
 var dataPipelineAuthorizer = "DataPipelineAuthorizer"
-var fiveMin int32 = 60 * 5
+var zeroVal int32 = 0
 var trueVal = true

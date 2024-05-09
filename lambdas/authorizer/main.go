@@ -69,14 +69,14 @@ type AuthorizationResponse struct {
 	IsAuthorized bool `json:"isAuthorized"`
 }
 
-func handler(event events.APIGatewayProxyRequest) (AuthorizationResponse, error) {
+func handler(e events.APIGatewayV2CustomAuthorizerV2Request) (AuthorizationResponse, error) {
 	realKey, err := getSecretValue()
 	if err != nil {
 		return AuthorizationResponse{IsAuthorized: false}, err
 	}
 
 	return AuthorizationResponse{
-		IsAuthorized: realKey == event.Headers["Authorization"],
+		IsAuthorized: realKey == e.IdentitySource[0],
 	}, nil
 }
 

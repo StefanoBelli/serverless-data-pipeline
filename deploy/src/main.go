@@ -65,15 +65,67 @@ func createApi() *string {
 		return nil
 	}
 
-	opOut, err := svc.apigateway.CreateApi(dflCtx(), &api)
+	apiOpOut, err := svc.apigateway.CreateApi(dflCtx(), &api)
 	if err != nil {
 		log.Printf("unable to create api: %v\n", err)
 		return nil
 	} else {
 		log.Printf("create api %s, endpoint %s, id %s\n",
-			*opOut.Name, *opOut.ApiEndpoint, *opOut.ApiId)
-		return opOut.ApiId
+			*apiOpOut.Name, *apiOpOut.ApiEndpoint, *apiOpOut.ApiId)
+		return apiOpOut.ApiId
 	}
+}
+
+func createDeployment(apiId *string, stageName *string) {
+	cdi := apigatewayv2.CreateDeploymentInput{
+		ApiId:     apiId,
+		StageName: stageName,
+	}
+	deplOp, err := svc.apigateway.CreateDeployment(dflCtx(), &cdi)
+	if err != nil {
+		log.Printf("unable to create deployment: %v\n", err)
+	} else {
+		log.Printf("create deployment %s, status: %s\n",
+			*deplOp.DeploymentId, deplOp.DeploymentStatus)
+		if deplOp.DeploymentStatusMessage != nil {
+			log.Printf("\tcarries status message: %s\n",
+				*deplOp.DeploymentStatusMessage)
+		}
+	}
+}
+
+func enableStageAutoDeploy(apiId *string, stageName *string) {
+	usi := apigatewayv2.UpdateStageInput{
+		ApiId:      apiId,
+		StageName:  stageName,
+		AutoDeploy: &trueVal,
+	}
+
+	usOut, err := svc.apigateway.UpdateStage(dflCtx(), &usi)
+	if err != nil {
+		log.Printf("unable to update stage: %v", err)
+	} else {
+		log.Printf("update stage %s (enabling auto-deploy: %t)\n",
+			*usOut.StageName, *usOut.AutoDeploy)
+	}
+}
+
+func createStage(apiId *string) *string {
+	stageName := new(string)
+	*stageName = "$default"
+
+	csi := apigatewayv2.CreateStageInput{
+		ApiId:     apiId,
+		StageName: stageName,
+	}
+	stageOp, err := svc.apigateway.CreateStage(dflCtx(), &csi)
+	if err != nil {
+		log.Printf("unable to create stage: %v\n", err)
+	} else {
+		log.Printf("create stage %s\n", *stageOp.StageName)
+	}
+
+	return stageName
 }
 
 func createStepFunction() *string {
@@ -591,15 +643,15 @@ func getApiId() (*string, error) {
 
 func getStateMachineDefinition() string {
 	return fmt.Sprintf(SFN_AML_DEFINITION_FMT,
-		lambdas[0].FunctionName, //validate
-		lambdas[1].FunctionName, //transform
-		lambdas[4].FunctionName, //flagTransformFailed
-		lambdas[3].FunctionName, //flagValidateFailed
-		lambdas[2].FunctionName, //store
-		lambdas[5].FunctionName, //flagStoreFailed
-		lambdas[4].FunctionName, //flagTransformFailed
-		lambdas[3].FunctionName, //flagValidateFailed
-		lambdas[3].FunctionName, //flagValidateFailed
+		*lambdas[0].FunctionName, //validate
+		*lambdas[1].FunctionName, //transform
+		*lambdas[4].FunctionName, //flagTransformFailed
+		*lambdas[3].FunctionName, //flagValidateFailed
+		*lambdas[2].FunctionName, //store
+		*lambdas[5].FunctionName, //flagStoreFailed
+		*lambdas[4].FunctionName, //flagTransformFailed
+		*lambdas[3].FunctionName, //flagValidateFailed
+		*lambdas[3].FunctionName, //flagValidateFailed
 	)
 }
 
@@ -812,7 +864,6 @@ func main() {
 			intChan := beginIgnoreInterruption()
 
 			apiId := createApi()
-
 			if apiId == nil {
 				getApiIdMayFail(&apiId)
 			}
@@ -820,6 +871,17 @@ func main() {
 			//dependency apiId ok
 			//dependency sfnArn ok
 			routeId := mergeRouteWithIntegration(apiId, sfnArn)
+
+			//dependency apiId ok
+			stageName := createStage(apiId)
+
+			//dependency apiId ok
+			//dependency stageName ok
+			createDeployment(apiId, stageName)
+
+			//dependency apiId ok
+			//dependency stageName ok
+			enableStageAutoDeploy(apiId, stageName)
 
 			endIgnoreInteruption(intChan)
 

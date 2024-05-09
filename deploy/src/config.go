@@ -469,7 +469,7 @@ var authorizer = apigatewayv2.CreateAuthorizerInput{
 	AuthorizerType:                 apitypes.AuthorizerTypeRequest,
 	IdentitySource:                 []string{"$request.header.Authorization"},
 	AuthorizerPayloadFormatVersion: &twoDotZero,
-	AuthorizerResultTtlInSeconds:   &fiveMin,
+	AuthorizerResultTtlInSeconds:   &zeroVal,
 	EnableSimpleResponses:          &trueVal,
 	AuthorizerCredentialsArn:       &iamLabRoleArn,
 }
