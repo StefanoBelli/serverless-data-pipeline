@@ -15,7 +15,7 @@ type TupleValidationResponse struct {
 }
 
 func handler(e TupleValidationRequest) (TupleValidationResponse, error) {
-	return TupleValidationResponse{Success: true, ValidationIdx: 1, Tuple: ""}, nil
+	return TupleValidationResponse{Success: true, ValidationIdx: 1, Tuple: e.Tuple}, nil
 }
 
 func main() {

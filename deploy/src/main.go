@@ -192,7 +192,6 @@ func createLambdas(baseDir string) {
 
 func mergeRouteWithIntegration(apiId *string, sfnArn *string) *string {
 	integration.ApiId = apiId
-	integration.RequestParameters = make(map[string]string)
 	integration.RequestParameters["StateMachineArn"] = *sfnArn
 
 	var head string

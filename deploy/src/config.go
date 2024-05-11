@@ -453,6 +453,9 @@ var integration = apigatewayv2.CreateIntegrationInput{
 	IntegrationSubtype:   &startExecution,
 	PayloadFormatVersion: &oneDotZero,
 	CredentialsArn:       &iamLabRoleArn,
+	RequestParameters: map[string]string{
+		"Input": "$request.body",
+	},
 }
 
 var route = apigatewayv2.CreateRouteInput{
