@@ -31,12 +31,17 @@ var noiseGens = []NoiseGenerator{
 		columnName: "tpep_pickup_datetime",
 		callback: func(value string) string {
 			num := rand.Float32()
-			if num > 0.5 {
+			if num > 0.8 {
 				return ""
 			}
 
 			dt, _ := time.Parse("2006-01-02 15:04:05", value)
-			return dt.Format("Jan 2 '06 at 15:04")
+			if num < 0.7 {
+				dt.AddDate(0, 1, 0)
+				return dt.Format("2006-01-02 15:04:05")
+			} else {
+				return dt.Format("Jan 2 '06 at 15:04")
+			}
 		},
 	},
 	{
