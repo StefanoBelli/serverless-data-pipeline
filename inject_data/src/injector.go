@@ -147,7 +147,7 @@ var noiseGens = []NoiseGenerator{
 			if num > 0.5 {
 				return ""
 			} else {
-				return "?"
+				return "6.7"
 			}
 		},
 	},
@@ -180,7 +180,7 @@ var noiseGens = []NoiseGenerator{
 			if num > 0.5 {
 				return ""
 			} else {
-				return "0.5d"
+				return "0.5"
 			}
 		},
 	},
@@ -202,7 +202,7 @@ var noiseGens = []NoiseGenerator{
 			if num > 0.5 {
 				return ""
 			} else {
-				return "-1"
+				return "-1.0a"
 			}
 		},
 	},
@@ -213,7 +213,7 @@ var noiseGens = []NoiseGenerator{
 			if num > 0.5 {
 				return ""
 			} else {
-				return "0"
+				return "0.0"
 			}
 		},
 	},
@@ -224,7 +224,7 @@ var noiseGens = []NoiseGenerator{
 			if num > 0.5 {
 				return ""
 			} else {
-				return "a"
+				return "7.4"
 			}
 		},
 	},
@@ -235,7 +235,7 @@ var noiseGens = []NoiseGenerator{
 			if num > 0.5 {
 				return ""
 			} else {
-				return "a"
+				return "8.9"
 			}
 		},
 	},

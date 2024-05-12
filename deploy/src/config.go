@@ -318,13 +318,13 @@ var tables = []dynamodb.CreateTableInput{
 		TableName: &validationStatus,
 		AttributeDefinitions: []ddbtypes.AttributeDefinition{
 			{
-				AttributeName: &idx,
+				AttributeName: &storeRequestUuid,
 				AttributeType: ddbtypes.ScalarAttributeTypeN,
 			},
 		},
 		KeySchema: []ddbtypes.KeySchemaElement{
 			{
-				AttributeName: &idx,
+				AttributeName: &storeRequestUuid,
 				KeyType:       ddbtypes.KeyTypeHash,
 			},
 		},
@@ -334,13 +334,13 @@ var tables = []dynamodb.CreateTableInput{
 		TableName: &transformationStatus,
 		AttributeDefinitions: []ddbtypes.AttributeDefinition{
 			{
-				AttributeName: &idx,
+				AttributeName: &storeRequestUuid,
 				AttributeType: ddbtypes.ScalarAttributeTypeN,
 			},
 		},
 		KeySchema: []ddbtypes.KeySchemaElement{
 			{
-				AttributeName: &idx,
+				AttributeName: &storeRequestUuid,
 				KeyType:       ddbtypes.KeyTypeHash,
 			},
 		},
@@ -350,13 +350,13 @@ var tables = []dynamodb.CreateTableInput{
 		TableName: &storeStatus,
 		AttributeDefinitions: []ddbtypes.AttributeDefinition{
 			{
-				AttributeName: &idx,
+				AttributeName: &storeRequestUuid,
 				AttributeType: ddbtypes.ScalarAttributeTypeN,
 			},
 		},
 		KeySchema: []ddbtypes.KeySchemaElement{
 			{
-				AttributeName: &idx,
+				AttributeName: &storeRequestUuid,
 				KeyType:       ddbtypes.KeyTypeHash,
 			},
 		},
@@ -366,13 +366,13 @@ var tables = []dynamodb.CreateTableInput{
 		TableName: &nycYellowTaxis,
 		AttributeDefinitions: []ddbtypes.AttributeDefinition{
 			{
-				AttributeName: &idx,
+				AttributeName: &storeRequestUuid,
 				AttributeType: ddbtypes.ScalarAttributeTypeN,
 			},
 		},
 		KeySchema: []ddbtypes.KeySchemaElement{
 			{
-				AttributeName: &idx,
+				AttributeName: &storeRequestUuid,
 				KeyType:       ddbtypes.KeyTypeHash,
 			},
 		},
