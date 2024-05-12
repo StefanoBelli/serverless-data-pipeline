@@ -197,7 +197,7 @@ var singleColumnCheckers = []SingleColumnChecker{
 		idx: 6,
 		check: func(s *string) bool {
 			i, err := strconv.ParseFloat(*s, 32)
-			if err != nil || i < 0 || (i > 6 && i != 99) {
+			if err != nil || i < 1 || (i > 6 && i != 99) {
 				return false
 			}
 

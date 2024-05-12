@@ -81,7 +81,7 @@ var noiseGens = []NoiseGenerator{
 			if num > 0.5 {
 				return ""
 			} else {
-				return "-1"
+				return "-1.0"
 			}
 		},
 	},
@@ -92,9 +92,9 @@ var noiseGens = []NoiseGenerator{
 			if num > 0.5 {
 				return ""
 			} else if num < 0.3 {
-				return "0"
+				return "0.0"
 			} else {
-				return "7"
+				return "7.0"
 			}
 		},
 	},
