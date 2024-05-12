@@ -11,7 +11,12 @@ var noiseGens = []NoiseGenerator{
 	{
 		columnName: "",
 		callback: func(_ string) string {
-			return ""
+			num := rand.Float32()
+			if num > 0.5 {
+				return "-1"
+			} else {
+				return ""
+			}
 		},
 	},
 	{
@@ -76,7 +81,7 @@ var noiseGens = []NoiseGenerator{
 			if num > 0.5 {
 				return ""
 			} else {
-				return "0"
+				return "-1"
 			}
 		},
 	},

@@ -175,9 +175,7 @@ var singleColumnCheckers = []SingleColumnChecker{
 		idx: 4,
 		check: func(s *string) bool {
 			i, err := strconv.ParseFloat(*s, 32)
-			if err != nil {
-				*s = ""
-			} else if i < 1 || i > 5 {
+			if err != nil || i < 1 || i > 5 {
 				return false
 			}
 
@@ -242,7 +240,7 @@ var singleColumnCheckers = []SingleColumnChecker{
 		idx: 10,
 		check: func(s *string) bool {
 			i, err := strconv.ParseInt(*s, 10, 32)
-			if err != nil || i < 0 || i > 6 {
+			if err != nil || i < 1 || i > 6 {
 				*s = ""
 			}
 
@@ -375,9 +373,16 @@ var crossColumnCheckers = []CrossColumnChecker{
 		idxs: []int{10, 11, 12, 13, 14, 15, 16, 17, 18, 19},
 		check: func(cols *[]*string) bool {
 			if *(*cols)[0] == "3" {
-				for _, e := range (*cols)[1:] {
-					if len(*e) == 0 {
-						return true
+				for i := range *cols {
+					if i != 0 {
+						elem := (*cols)[i]
+						if len(*elem) == 0 {
+							return true
+						}
+
+						if (*elem)[0] != '-' {
+							return true
+						}
 					}
 				}
 
