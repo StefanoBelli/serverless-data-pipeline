@@ -268,6 +268,13 @@ func inject(path string) error {
 
 	i := 1
 	for range genChans.outEntry {
+		//TODO randomly, if enabled, change tuple
+		// - subst one , with \t separator
+		// - subst all , with ; separator
+		// - add one extra ,
+		// - remove one ,
+		// - send empty string
+
 		//fmt.Println(entry) //TODO later replace by HTTP GET to endpoint
 		fmt.Printf(" --> Injected %d entries\r", i)
 		i++

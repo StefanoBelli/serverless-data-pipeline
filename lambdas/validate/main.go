@@ -11,8 +11,8 @@ import (
 
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
 const CSV_COMMA_SEP = ","
@@ -30,6 +30,7 @@ type TupleValidationRequest struct {
 
 type TupleValidationResponse struct {
 	Success         bool   `json:"success"`
+	Reason          int    `json:"reason"`
 	TransactionUuid int64  `json:"transactionUuid"`
 	Tuple           string `json:"tuple"`
 }
@@ -37,6 +38,7 @@ type TupleValidationResponse struct {
 func validResponse(uuid int64, rawTuple *string) (TupleValidationResponse, error) {
 	return TupleValidationResponse{
 		Success:         true,
+		Reason:          0,
 		TransactionUuid: uuid,
 		Tuple:           *rawTuple,
 	}, nil
@@ -45,6 +47,7 @@ func validResponse(uuid int64, rawTuple *string) (TupleValidationResponse, error
 func invalidResponse(uuid int64) (TupleValidationResponse, error) {
 	return TupleValidationResponse{
 		Success:         false,
+		Reason:          1,
 		TransactionUuid: uuid,
 	}, nil
 }
@@ -54,7 +57,7 @@ func erroredResponse(msg string, err error) (TupleValidationResponse, error) {
 }
 
 func calculateTransactionUuid(rawTuple *string, beginTime int64) int64 {
-	var uuid int64
+	var uuid = beginTime
 	for i, c := range *rawTuple {
 		uuid += int64(c) * int64(i)
 	}
@@ -62,13 +65,25 @@ func calculateTransactionUuid(rawTuple *string, beginTime int64) int64 {
 	return uuid
 }
 
+type TupleStatus struct {
+	StoreRequestUuid int64  `dynamodbav:"StoreRequestUUID"`
+	RawTuple         string `dynamodbav:"RawTuple"`
+	StatusReason     int32  `dynamodbav:"StatusReason"`
+}
+
 func putRawTuple(dyndb *dynamodb.Client, uuid int64, rawTuple *string) error {
-	_, err := dyndb.PutItem(dflCtx(), &dynamodb.PutItemInput{
-		Item: map[string]types.AttributeValue{
-			strconv.FormatInt(uuid, 10): &types.AttributeValueMemberN{},
-			*rawTuple:                   &types.AttributeValueMemberS{},
-			"0":                         &types.AttributeValueMemberN{},
-		},
+	item, err := attributevalue.MarshalMap(TupleStatus{
+		StoreRequestUuid: uuid,
+		RawTuple:         *rawTuple,
+		StatusReason:     0,
+	})
+	if err != nil {
+		return err
+	}
+
+	_, err = dyndb.PutItem(dflCtx(), &dynamodb.PutItemInput{
+		Item:      item,
+		TableName: &TABLE_NAME,
 	})
 
 	return err
@@ -370,35 +385,12 @@ var crossColumnCheckers = []CrossColumnChecker{
 		},
 	},
 	{
-		idxs: []int{10, 11, 12, 13, 14, 15, 16, 17, 18, 19},
-		check: func(cols *[]*string) bool {
-			if *(*cols)[0] == "3" {
-				for i := range *cols {
-					if i != 0 {
-						elem := (*cols)[i]
-						if len(*elem) == 0 {
-							return true
-						}
-
-						if (*elem)[0] != '-' {
-							return true
-						}
-					}
-				}
-
-				return false
-			}
-
-			return true
-		},
-	},
-	{
 		idxs: []int{11, 12, 13, 14, 15, 16, 17, 18, 19},
 		check: func(cols *[]*string) bool {
 			var sum float64 = 0
 			for i := range *cols {
 				if i != 6 {
-					k, err := strconv.ParseFloat(*(*cols)[i], 32)
+					k, err := strconv.ParseFloat(*(*cols)[i], 64)
 					if err != nil {
 						return true
 					}
@@ -407,7 +399,7 @@ var crossColumnCheckers = []CrossColumnChecker{
 				}
 			}
 
-			total, err := strconv.ParseFloat(*(*cols)[6], 32)
+			total, err := strconv.ParseFloat(*(*cols)[6], 64)
 			if err != nil {
 				return false
 			}
