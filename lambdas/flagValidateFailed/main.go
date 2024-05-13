@@ -21,6 +21,9 @@ func dflCtx() context.Context {
 type ValidationFailFlagRequest struct {
 	TransactionUuid int64 `json:"transactionUuid"`
 	Reason          int32 `json:"reason"`
+	Error           struct {
+		Error string `json:"Error"`
+	} `json:"error,omitempty"`
 }
 
 func getKey(uuid int64) (map[string]types.AttributeValue, error) {

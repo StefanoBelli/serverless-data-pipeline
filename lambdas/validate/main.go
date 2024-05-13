@@ -123,6 +123,8 @@ func fieldChecksAreOk(tuple *string) bool {
 		}
 	}
 
+	*tuple = strings.Join(csvCols, ",")
+
 	return true
 }
 

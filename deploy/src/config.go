@@ -75,7 +75,16 @@ var SFN_AML_DEFINITION_FMT = `
           "BackoffRate": 2
         }
       ],
-      "Next": "Was transformation possible?"
+      "Next": "Was transformation possible?",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed"
+          ],
+          "Next": "Set validate tuple failed",
+          "ResultPath": "$.error"
+        }
+      ]
     },
     "Was transformation possible?": {
       "Type": "Choice",
@@ -171,7 +180,16 @@ var SFN_AML_DEFINITION_FMT = `
           "BackoffRate": 2
         }
       ],
-      "Next": "Did the storage process encounter any error?"
+      "Next": "Did the storage process encounter any error?",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed"
+          ],
+          "Next": "Parallel (1)",
+          "ResultPath": "$.error"
+        }
+      ]
     },
     "Did the storage process encounter any error?": {
       "Type": "Choice",
