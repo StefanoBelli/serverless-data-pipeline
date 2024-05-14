@@ -1,24 +1,16 @@
 package main
 
 import (
-	"context"
+	"dyndbutils"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 )
 
 var TABLE_NAME = "transformationStatus"
-
-func dflCtx() context.Context {
-	return context.TODO()
-}
 
 type TupleTransformationResponse struct {
 	Success         bool   `json:"success"`
@@ -30,12 +22,6 @@ type TupleTransformationResponse struct {
 type TupleTransformationRequest struct {
 	TransactionUuid int64  `json:"transactionUuid"`
 	Tuple           string `json:"tuple"`
-}
-
-type TupleStatus struct {
-	StoreRequestUuid int64  `dynamodbav:"StoreRequestUUID"`
-	RawTuple         string `dynamodbav:"RawTuple"`
-	StatusReason     int32  `dynamodbav:"StatusReason"`
 }
 
 type TransformError struct {
@@ -70,35 +56,6 @@ func invalidResponse(e *TupleTransformationRequest) (TupleTransformationResponse
 	}, nil
 }
 
-func putRawTuple(dyndb *dynamodb.Client, uuid int64, rawTuple *string) error {
-	item, err := attributevalue.MarshalMap(TupleStatus{
-		StoreRequestUuid: uuid,
-		RawTuple:         *rawTuple,
-		StatusReason:     0,
-	})
-	if err != nil {
-		return err
-	}
-
-	_, err = dyndb.PutItem(dflCtx(), &dynamodb.PutItemInput{
-		Item:      item,
-		TableName: &TABLE_NAME,
-	})
-
-	return err
-}
-
-func newDynamoDbService() (*dynamodb.Client, error) {
-	awsConfig, err := config.LoadDefaultConfig(
-		dflCtx(),
-		config.WithRegion(os.Getenv("AWS_REGION")))
-	if err != nil {
-		return nil, err
-	}
-
-	return dynamodb.NewFromConfig(awsConfig), nil
-}
-
 /*
  * According to: https://www.nyc.gov/assets/tlc/downloads/pdf/data_dictionary_trip_records_yellow.pdf
  * Transform:
@@ -110,7 +67,7 @@ func newDynamoDbService() (*dynamodb.Client, error) {
  * Also transform:
  *  - CSV separator character
  *  - Date format
- *  - USD to EUR
+ *  - Passenger_count from float to int
  *
  * Transform fails for:
  *  - negative USD
@@ -139,12 +96,15 @@ func performDataTransformation(rawTuple *string) bool {
 }
 
 func handler(e TupleTransformationRequest) (TupleTransformationResponse, error) {
-	ddbSvc, err := newDynamoDbService()
+	ddbSvc, err := dyndbutils.NewDynamoDbService()
 	if err != nil {
 		return erroredResponse("unable to load dynamodb service", err)
 	}
 
-	err = putRawTuple(ddbSvc, e.TransactionUuid, &e.Tuple)
+	err = dyndbutils.PutInTable(
+		ddbSvc,
+		dyndbutils.BuildDefaultTupleStatus(e.TransactionUuid, &e.Tuple),
+		&TABLE_NAME)
 	if err != nil {
 		return erroredResponse("unable to put raw tuple", err)
 	}
@@ -178,15 +138,28 @@ var multiColumnTransformers = []MultiColumnTransformer{
 		},
 	},
 	{
+		idxs: []int{4},
+		transform: func(col *[]*string) bool {
+			fl, err := strconv.ParseFloat(*(*col)[0], 64)
+			if err != nil {
+				return false
+			}
+
+			*(*col)[0] = fmt.Sprintf("%d", int(fl))
+			return true
+		},
+	},
+	{
 		idxs: []int{6},
 		transform: func(col *[]*string) bool {
 			assoc := map[string]string{
-				"1": "Standard rate",
-				"2": "JFK",
-				"3": "Newark",
-				"4": "Nassau or Westchester",
-				"5": "Negotiated fare",
-				"6": "Group ride",
+				"1.0":  "Standard rate",
+				"2.0":  "JFK",
+				"3.0":  "Newark",
+				"4.0":  "Nassau or Westchester",
+				"5.0":  "Negotiated fare",
+				"6.0":  "Group ride",
+				"99.0": "Unknown (type=99)",
 			}
 
 			return applySubst((*col)[0], &assoc)
@@ -196,8 +169,8 @@ var multiColumnTransformers = []MultiColumnTransformer{
 		idxs: []int{7},
 		transform: func(col *[]*string) bool {
 			assoc := map[string]string{
-				"1": "store and forward trip",
-				"2": "not a store and forward trip",
+				"Y": "store and forward trip",
+				"N": "not a store and forward trip",
 			}
 
 			return applySubst((*col)[0], &assoc)
@@ -216,24 +189,6 @@ var multiColumnTransformers = []MultiColumnTransformer{
 			}
 
 			return applySubst((*col)[0], &assoc)
-		},
-	},
-	{
-		idxs: []int{11, 12, 13, 14, 15, 16, 17, 18, 19},
-		transform: func(cols *[]*string) bool {
-			for _, col := range *cols {
-				usd, err := strconv.ParseFloat(*col, 64)
-				if err != nil {
-					return false
-				}
-
-				//assuming fixed (0.95) exchange rate between USD<->EUR
-				//a real-time query would be needed otherwise
-				eur := usd * 0.95
-				*col = fmt.Sprintf("%f", eur)
-			}
-
-			return true
 		},
 	},
 	{

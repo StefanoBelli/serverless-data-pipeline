@@ -1,28 +1,20 @@
 package main
 
 import (
-	"context"
+	"dyndbutils"
 	"errors"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 )
 
 const CSV_COMMA_SEP = ","
 const CSV_NUMCOLS = 20
 
 var TABLE_NAME = "validationStatus"
-
-func dflCtx() context.Context {
-	return context.TODO()
-}
 
 type TupleValidationRequest struct {
 	Tuple string `json:"tuple"`
@@ -71,35 +63,6 @@ type TupleStatus struct {
 	StatusReason     int32  `dynamodbav:"StatusReason"`
 }
 
-func putRawTuple(dyndb *dynamodb.Client, uuid int64, rawTuple *string) error {
-	item, err := attributevalue.MarshalMap(TupleStatus{
-		StoreRequestUuid: uuid,
-		RawTuple:         *rawTuple,
-		StatusReason:     0,
-	})
-	if err != nil {
-		return err
-	}
-
-	_, err = dyndb.PutItem(dflCtx(), &dynamodb.PutItemInput{
-		Item:      item,
-		TableName: &TABLE_NAME,
-	})
-
-	return err
-}
-
-func newDynamoDbService() (*dynamodb.Client, error) {
-	awsConfig, err := config.LoadDefaultConfig(
-		dflCtx(),
-		config.WithRegion(os.Getenv("AWS_REGION")))
-	if err != nil {
-		return nil, err
-	}
-
-	return dynamodb.NewFromConfig(awsConfig), nil
-}
-
 func fieldChecksAreOk(tuple *string) bool {
 	csvCols := strings.Split(*tuple, CSV_COMMA_SEP)
 	if len(csvCols) != CSV_NUMCOLS {
@@ -137,14 +100,17 @@ func handler(e TupleValidationRequest) (TupleValidationResponse, error) {
 			errors.New("empty tuple"))
 	}
 
-	ddbSvc, err := newDynamoDbService()
+	ddbSvc, err := dyndbutils.NewDynamoDbService()
 	if err != nil {
 		return erroredResponse("unable to load dynamodb service", err)
 	}
 
 	transactionUuid := calculateTransactionUuid(&e.Tuple, transactionBeginTime)
 
-	err = putRawTuple(ddbSvc, transactionUuid, &fixedTuple)
+	err = dyndbutils.PutInTable(
+		ddbSvc,
+		dyndbutils.BuildDefaultTupleStatus(transactionUuid, &e.Tuple),
+		&TABLE_NAME)
 	if err != nil {
 		return erroredResponse("unable to put raw tuple", err)
 	}

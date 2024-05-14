@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 
-	//"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
@@ -103,8 +102,4 @@ func SetTableName(yourTableName string) {
 	tableNameIsSet = true
 }
 
-/*
-func main() {
-	lambda.Start(handler)
-}
-*/
+/* End of exported */

@@ -180,7 +180,7 @@ var SFN_AML_DEFINITION_FMT = `
           "BackoffRate": 2
         }
       ],
-      "Next": "Did the storage process encounter any error?",
+      "Next": "Success",
       "Catch": [
         {
           "ErrorEquals": [
@@ -190,17 +190,6 @@ var SFN_AML_DEFINITION_FMT = `
           "ResultPath": "$.error"
         }
       ]
-    },
-    "Did the storage process encounter any error?": {
-      "Type": "Choice",
-      "Choices": [
-        {
-          "Variable": "$.success",
-          "BooleanEquals": true,
-          "Next": "Success"
-        }
-      ],
-      "Default": "Parallel (1)"
     },
     "Parallel (1)": {
       "Type": "Parallel",
