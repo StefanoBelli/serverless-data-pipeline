@@ -6,27 +6,27 @@ import (
 	"time"
 )
 
-type NoiseGenerator struct {
+type ColumnNoiseGenerator struct {
 	columnName string
 	callback   func(string) string
 }
 
-func findNoiseGenerator(gs []NoiseGenerator, c CsvEntry) (NoiseGenerator, error) {
-	for _, g := range gs {
+func findColumnNoiseGenerator(gs *[]ColumnNoiseGenerator, c *CsvEntry) (ColumnNoiseGenerator, error) {
+	for _, g := range *gs {
 		if g.columnName == c.columnName {
 			return g, nil
 		}
 	}
 
-	return NoiseGenerator{"", nil}, errors.New("no matching NoiseGenerator")
+	return ColumnNoiseGenerator{"", nil}, errors.New("no matching NoiseGenerator")
 }
 
-type GeneratorChannels struct {
+type ColumnNoiseGenerationChannels struct {
 	outEntry chan string
 	outErr   chan error
 }
 
-func generate(filePath string, noiseGens []NoiseGenerator, chans GeneratorChannels) {
+func generateColumnNoise(filePath string, noiseGens []ColumnNoiseGenerator, chans ColumnNoiseGenerationChannels) {
 	needsDirtyData := programConfig.generator.dirtyData
 	threshDirtyData := programConfig.generator.dirtyThresh
 	delay := time.Duration(programConfig.generator.everyMs) * time.Millisecond
@@ -41,6 +41,8 @@ func generate(filePath string, noiseGens []NoiseGenerator, chans GeneratorChanne
 	}
 
 	defer csv.close()
+
+	discardFirstEntriesAsRequired()
 
 	var parseErr error
 
@@ -57,7 +59,7 @@ func generate(filePath string, noiseGens []NoiseGenerator, chans GeneratorChanne
 		for _, ent := range ents {
 			if genDirty {
 				if rand.Float32() >= 0.7 {
-					gen, genErr := findNoiseGenerator(noiseGens, ent)
+					gen, genErr := findColumnNoiseGenerator(&noiseGens, &ent)
 					if genErr == nil && gen.callback != nil {
 						ent.value = gen.callback(ent.value)
 					}
@@ -79,4 +81,8 @@ func generate(filePath string, noiseGens []NoiseGenerator, chans GeneratorChanne
 	} else {
 		chans.outErr <- parseErr
 	}
+}
+
+func discardFirstEntriesAsRequired() {
+
 }

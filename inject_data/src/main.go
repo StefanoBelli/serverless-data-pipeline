@@ -17,6 +17,9 @@ import (
 const DEFAULT_CSV_SEPARATOR = ","
 
 const DEFAULT_API_ENDPOINT = "API gateway endpoint"
+const DEFAULT_AUTH_KEY = ""
+
+const DEFAULT_START_AT = "0"
 
 const DEFAULT_EVERY_MS = "3000"
 const DEFAULT_DIRTY_DATA = "true"
@@ -46,7 +49,11 @@ type Config struct {
 	}
 
 	injector struct {
-		apiEndpoint string
+		http struct {
+			apiEndpoint string
+			authKey     string
+		}
+		startAt int32
 	}
 
 	csv struct {
@@ -108,7 +115,7 @@ var programArguments = []Argument{
 		name:        "--filename-default",
 		description: "Set default relative (to cachedir) filename to use",
 		needsValue:  false,
-		handler: func(val string) {
+		handler: func(_ string) {
 			programConfig.filename = DEFAULT_FILE_NAME
 		},
 	},
@@ -125,7 +132,7 @@ var programArguments = []Argument{
 		name:        "--cachedir-default",
 		description: "Set default cache directory",
 		needsValue:  false,
-		handler: func(val string) {
+		handler: func(_ string) {
 			programConfig.cacheDirPath = DEFAULT_CACHEDIR_RELNAME
 		},
 	},
@@ -174,7 +181,7 @@ var programArguments = []Argument{
 		name:        "--every-ms-default",
 		description: "Generate an entry every default ms delay",
 		needsValue:  false,
-		handler: func(value string) {
+		handler: func(_ string) {
 			evMs, _ := strconv.ParseInt(DEFAULT_EVERY_MS, 10, 32)
 			programConfig.generator.everyMs = int(evMs)
 		},
@@ -214,7 +221,7 @@ var programArguments = []Argument{
 		name:        "--dirty-thresh-default",
 		description: "Set thresh. to dirty data (default). Check against PRNG-generated num in (0,1).",
 		needsValue:  false,
-		handler: func(value string) {
+		handler: func(_ string) {
 			dThr, _ := strconv.ParseFloat(DEFAULT_DIRTY_THRESHOLD, 32)
 			programConfig.generator.dirtyThresh = float32(dThr)
 		},
@@ -225,15 +232,15 @@ var programArguments = []Argument{
 		needsValue:  true,
 		defValue:    DEFAULT_API_ENDPOINT,
 		handler: func(value string) {
-			programConfig.injector.apiEndpoint = value
+			programConfig.injector.http.apiEndpoint = value
 		},
 	},
 	{
 		name:        "--api-endpoint-default",
 		description: "Set default API gateway endpoint to send data to",
 		needsValue:  false,
-		handler: func(value string) {
-			programConfig.injector.apiEndpoint = DEFAULT_API_ENDPOINT
+		handler: func(_ string) {
+			programConfig.injector.http.apiEndpoint = DEFAULT_API_ENDPOINT
 		},
 	},
 	{
@@ -253,8 +260,52 @@ var programArguments = []Argument{
 		name:        "--csv-separator-default",
 		description: "Set default csv column separator",
 		needsValue:  false,
-		handler: func(value string) {
+		handler: func(_ string) {
 			programConfig.csv.separator = DEFAULT_CSV_SEPARATOR
+		},
+	},
+	{
+		name:        "--auth-key",
+		description: "Enable authentication via secret key",
+		needsValue:  true,
+		defValue:    DEFAULT_AUTH_KEY,
+		handler: func(value string) {
+			programConfig.injector.http.authKey = value
+		},
+	},
+	{
+		name:        "--no-auth-key",
+		description: "Disable authentication",
+		needsValue:  false,
+		handler: func(_ string) {
+			programConfig.injector.http.authKey = DEFAULT_START_AT
+		},
+	},
+	{
+		name:        "--start-at",
+		description: "Start injecting from i-th entry",
+		needsValue:  true,
+		defValue:    DEFAULT_START_AT,
+		handler: func(value string) {
+			s, err := strconv.ParseInt(value, 10, 32)
+			if err != nil {
+				log.Fatalln("unable to parse int")
+			}
+
+			if s >= 0 {
+				programConfig.injector.startAt = int32(s)
+			} else {
+				log.Fatalln("invalid value for --start-at")
+			}
+		},
+	},
+	{
+		name:        "--start-at-default",
+		description: "Set default starting point for entry injection",
+		needsValue:  false,
+		handler: func(_ string) {
+			s, _ := strconv.ParseInt(DEFAULT_START_AT, 10, 32)
+			programConfig.injector.startAt = int32(s)
 		},
 	},
 }
@@ -285,20 +336,10 @@ func printHelpAndExit() {
 }
 
 func loadDefaults() {
-	dirtyData, err := strconv.ParseBool(DEFAULT_DIRTY_DATA)
-	if err != nil {
-		log.Fatalln("unable to parse bool (loading defaults)")
-	}
-
-	dirtyThresh, err := strconv.ParseFloat(DEFAULT_DIRTY_THRESHOLD, 32)
-	if err != nil {
-		log.Fatalln("unable to parse float (loading defaults)")
-	}
-
-	evMs, err := strconv.ParseInt(DEFAULT_EVERY_MS, 10, 32)
-	if err != nil {
-		log.Fatalln("unable to parse int (loading defaults)")
-	}
+	dirtyData, _ := strconv.ParseBool(DEFAULT_DIRTY_DATA)
+	dirtyThresh, _ := strconv.ParseFloat(DEFAULT_DIRTY_THRESHOLD, 32)
+	evMs, _ := strconv.ParseInt(DEFAULT_EVERY_MS, 10, 32)
+	startAt, _ := strconv.ParseInt(DEFAULT_START_AT, 10, 32)
 
 	dflCacheDir := getHomeDir() + "/" + DEFAULT_CACHEDIR_RELNAME
 
@@ -308,17 +349,16 @@ func loadDefaults() {
 	programConfig.downloadUrl = DEFAULT_URL
 	programConfig.skipChecksum = DEFAULT_SKIP_CHECKSUM
 	programConfig.skipDownload = DEFAULT_SKIP_DOWNLOAD
-	programConfig.injector.apiEndpoint = DEFAULT_API_ENDPOINT
+	programConfig.injector.http.apiEndpoint = DEFAULT_API_ENDPOINT
+	programConfig.injector.http.authKey = DEFAULT_AUTH_KEY
+	programConfig.injector.startAt = int32(startAt)
 	programConfig.generator.dirtyData = dirtyData
 	programConfig.generator.dirtyThresh = float32(dirtyThresh)
 	programConfig.generator.everyMs = int(evMs)
 
 	programConfig.csv.separator = DEFAULT_CSV_SEPARATOR
-	if len(programConfig.csv.separator) != 1 {
-		log.Fatalf("%s is not a valid separator - must be 1 chr long\n",
-			programConfig.csv.separator)
-	}
 }
+
 func configureProgramByArgs() {
 	loadDefaults()
 

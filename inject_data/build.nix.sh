@@ -1,6 +1,6 @@
 #!/bin/sh
 
-SOURCES="csv_parser.go generator.go injector.go main.go"
+SOURCES="csv_parser.go cngen.go twngen.go injector.go main.go"
 
 OUTPUT=bin
 

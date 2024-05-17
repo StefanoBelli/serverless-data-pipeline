@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"strings"
 	"time"
 )
 
-var noiseGens = []NoiseGenerator{
+var columnNoiseGens = []ColumnNoiseGenerator{
 	{
 		columnName: "",
 		callback: func(_ string) string {
@@ -251,30 +252,37 @@ var noiseGens = []NoiseGenerator{
 	},
 }
 
-func inject(path string) error {
-	apiEndpoint := programConfig.injector.apiEndpoint
+var tupleWiseNoiseGens = []TupleWiseNoiseGenerator{
+	func(s *string) {
+		*s = strings.ReplaceAll(*s, ",", ";")
+	},
+	func(s *string) {
+		*s += ","
+	},
+	func(s *string) {
+		*s = "," + *s
+	},
+	func(s *string) {
+		*s = ""
+	},
+	func(s *string) {
+		i := strings.LastIndexByte(*s, ',')
+		*s = (*s)[:i] + (*s)[i+1:]
+	},
+}
 
-	var genChans GeneratorChannels
+func inject(path string) error {
+	var genChans ColumnNoiseGenerationChannels
 
 	genChans.outEntry = make(chan string)
 	genChans.outErr = make(chan error)
 
-	go generate(path, noiseGens, genChans)
-
-	log.Printf("Injecting to API endpoint: %s\n",
-		apiEndpoint)
+	go generateColumnNoise(path, columnNoiseGens, genChans)
 
 	fmt.Printf(" --> Injected 0 entries\r")
 
 	i := 1
 	for range genChans.outEntry {
-		//TODO randomly, if enabled, change tuple
-		// - subst one , with \t separator
-		// - subst all , with ; separator
-		// - add one extra ,
-		// - remove one ,
-		// - send empty string
-
 		//fmt.Println(entry) //TODO later replace by HTTP GET to endpoint
 		fmt.Printf(" --> Injected %d entries\r", i)
 		i++
@@ -288,4 +296,8 @@ func inject(path string) error {
 	close(genChans.outErr)
 
 	return myErr
+}
+
+func makeHttpPost(body *string) *string {
+	return nil
 }

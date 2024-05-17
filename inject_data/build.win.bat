@@ -1,6 +1,6 @@
 @echo off
 
-set SOURCES=csv_parser.go generator.go injector.go main.go
+set SOURCES=csv_parser.go cngen.go twngen.go injector.go main.go
 
 set OUTPUT=bin
 
