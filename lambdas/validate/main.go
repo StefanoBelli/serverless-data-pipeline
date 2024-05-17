@@ -4,6 +4,7 @@ import (
 	"dyndbutils"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"strconv"
 	"strings"
 	"time"
@@ -21,26 +22,26 @@ type TupleValidationRequest struct {
 }
 
 type TupleValidationResponse struct {
-	Success         bool   `json:"success"`
-	Reason          int    `json:"reason"`
-	TransactionUuid int64  `json:"transactionUuid"`
-	Tuple           string `json:"tuple"`
+	Success       bool   `json:"success"`
+	Reason        int    `json:"reason"`
+	TransactionId uint64 `json:"transactionId"`
+	Tuple         string `json:"tuple"`
 }
 
-func validResponse(uuid int64, rawTuple *string) (TupleValidationResponse, error) {
+func validResponse(id uint64, rawTuple *string) (TupleValidationResponse, error) {
 	return TupleValidationResponse{
-		Success:         true,
-		Reason:          0,
-		TransactionUuid: uuid,
-		Tuple:           *rawTuple,
+		Success:       true,
+		Reason:        0,
+		TransactionId: id,
+		Tuple:         *rawTuple,
 	}, nil
 }
 
-func invalidResponse(uuid int64) (TupleValidationResponse, error) {
+func invalidResponse(id uint64) (TupleValidationResponse, error) {
 	return TupleValidationResponse{
-		Success:         false,
-		Reason:          1,
-		TransactionUuid: uuid,
+		Success:       false,
+		Reason:        1,
+		TransactionId: id,
 	}, nil
 }
 
@@ -48,19 +49,13 @@ func erroredResponse(msg string, err error) (TupleValidationResponse, error) {
 	return TupleValidationResponse{}, fmt.Errorf("%s: %v", msg, err)
 }
 
-func calculateTransactionUuid(rawTuple *string, beginTime int64) int64 {
-	var uuid = beginTime
+func calculateTransactionId(rawTuple *string, unix32BeginTime int64) uint64 {
+	var id uint64 = uint64(unix32BeginTime) + uint64(rand.IntN(10000))
 	for i, c := range *rawTuple {
-		uuid += int64(c) * int64(i)
+		id += uint64(c) * uint64(i)
 	}
 
-	return uuid
-}
-
-type TupleStatus struct {
-	StoreRequestUuid int64  `dynamodbav:"StoreRequestUUID"`
-	RawTuple         string `dynamodbav:"RawTuple"`
-	StatusReason     int32  `dynamodbav:"StatusReason"`
+	return id
 }
 
 func fieldChecksAreOk(tuple *string) bool {
@@ -92,7 +87,7 @@ func fieldChecksAreOk(tuple *string) bool {
 }
 
 func handler(e TupleValidationRequest) (TupleValidationResponse, error) {
-	transactionBeginTime := time.Now().UnixNano()
+	transactionBeginTime := time.Now().Unix()
 
 	fixedTuple := strings.TrimSpace(e.Tuple)
 	if len(fixedTuple) == 0 {
@@ -105,20 +100,20 @@ func handler(e TupleValidationRequest) (TupleValidationResponse, error) {
 		return erroredResponse("unable to load dynamodb service", err)
 	}
 
-	transactionUuid := calculateTransactionUuid(&e.Tuple, transactionBeginTime)
+	transactionId := calculateTransactionId(&e.Tuple, transactionBeginTime)
 
 	err = dyndbutils.PutInTable(
 		ddbSvc,
-		dyndbutils.BuildDefaultTupleStatus(transactionUuid, &e.Tuple),
+		dyndbutils.BuildDefaultTupleStatus(transactionId, &e.Tuple),
 		&TABLE_NAME)
 	if err != nil {
 		return erroredResponse("unable to put raw tuple", err)
 	}
 
 	if fieldChecksAreOk(&fixedTuple) {
-		return validResponse(transactionUuid, &fixedTuple)
+		return validResponse(transactionId, &fixedTuple)
 	} else {
-		return invalidResponse(transactionUuid)
+		return invalidResponse(transactionId)
 	}
 }
 

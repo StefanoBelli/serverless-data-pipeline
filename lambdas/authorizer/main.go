@@ -7,6 +7,7 @@ import (
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager/types"
@@ -28,8 +29,6 @@ func newSecretsManagerService() (*secretsmanager.Client, error) {
 }
 
 func getSecretValue() (string, error) {
-	var i1 int32 = 1
-
 	smSvc, err := newSecretsManagerService()
 	if err != nil {
 		return "", err
@@ -37,7 +36,7 @@ func getSecretValue() (string, error) {
 
 	lsi := secretsmanager.ListSecretsInput{
 		SortOrder:  types.SortOrderTypeDesc,
-		MaxResults: &i1,
+		MaxResults: aws.Int32(1),
 		Filters: []types.Filter{
 			{
 				Key:    types.FilterNameStringTypeName,

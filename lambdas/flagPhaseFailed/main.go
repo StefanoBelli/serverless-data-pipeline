@@ -12,6 +12,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
+/* not exported */
+
 var tableName = ""
 var tableNameIsSet = false
 
@@ -19,21 +21,21 @@ func dflCtx() context.Context {
 	return context.TODO()
 }
 
-type FailFlagRequest struct {
-	TransactionUuid int64 `json:"transactionUuid"`
-	Reason          int32 `json:"reason"`
-	Error           struct {
+type failFlagRequest struct {
+	TransactionId uint64 `json:"transactionId"`
+	Reason        int32  `json:"reason"`
+	Error         struct {
 		Error string `json:"Error"`
 	} `json:"error,omitempty"`
 }
 
-func getKey(uuid int64) (map[string]types.AttributeValue, error) {
-	sru, err := attributevalue.Marshal(uuid)
-	return map[string]types.AttributeValue{"StoreRequestUUID": sru}, err
+func getKey(id uint64) (map[string]types.AttributeValue, error) {
+	sru, err := attributevalue.Marshal(id)
+	return map[string]types.AttributeValue{"StoreRequestId": sru}, err
 }
 
-func updateTuple(dyndb *dynamodb.Client, uuid int64, reason int32) error {
-	key, err := getKey(uuid)
+func updateTuple(dyndb *dynamodb.Client, id uint64, reason int32) error {
+	key, err := getKey(id)
 	if err != nil {
 		return err
 	}
@@ -79,7 +81,7 @@ func getReasonCodeFromErrorType(errorType *string) int32 {
 
 /* exported */
 
-func Handler(e FailFlagRequest) (bool, error) {
+func Handler(e failFlagRequest) (bool, error) {
 	if tableNameIsSet {
 		if e.Reason == 0 {
 			e.Reason = getReasonCodeFromErrorType(&e.Error.Error)
@@ -90,7 +92,7 @@ func Handler(e FailFlagRequest) (bool, error) {
 			return false, err
 		}
 
-		err = updateTuple(ddbSvc, e.TransactionUuid, e.Reason)
+		err = updateTuple(ddbSvc, e.TransactionId, e.Reason)
 		return err == nil, err
 	} else {
 		return false, errors.New("need to set tableName (dev error)")
@@ -101,5 +103,3 @@ func SetTableName(yourTableName string) {
 	tableName = yourTableName
 	tableNameIsSet = true
 }
-
-/* End of exported */

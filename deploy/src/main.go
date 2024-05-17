@@ -11,6 +11,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/apigatewayv2"
 	apigtypes "github.com/aws/aws-sdk-go-v2/service/apigatewayv2/types"
@@ -98,7 +99,7 @@ func enableStageAutoDeploy(apiId *string, stageName *string) {
 	usi := apigatewayv2.UpdateStageInput{
 		ApiId:      apiId,
 		StageName:  stageName,
-		AutoDeploy: &trueVal,
+		AutoDeploy: aws.Bool(true),
 	}
 
 	usOut, err := svc.apigateway.UpdateStage(dflCtx(), &usi)
@@ -199,7 +200,7 @@ func mergeRouteWithIntegration(apiId *string, sfnArn *string) *string {
 
 	gii := apigatewayv2.GetIntegrationsInput{
 		ApiId:      apiId,
-		MaxResults: &s1000,
+		MaxResults: aws.String("1000"),
 	}
 
 	found := false
@@ -267,13 +268,13 @@ func mergeRouteWithIntegration(apiId *string, sfnArn *string) *string {
 
 func addAuthorizerLambda() {
 	lambdas = append(lambdas, lambda.CreateFunctionInput{
-		FunctionName:  &authorizerS,
+		FunctionName:  aws.String("authorizer"),
 		Role:          &iamLabRoleArn,
 		PackageType:   lmbdtypes.PackageTypeZip,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeProvidedal2023,
-		Handler:       &bootstrap,
-		Timeout:       &lambdaTimeout,
+		Handler:       aws.String("bootstrap"),
+		Timeout:       aws.Int32(10),
 	})
 }
 
@@ -413,7 +414,10 @@ func deleteStepFunction() {
 }
 
 func deleteRoutes(apiId *string) {
-	gri := apigatewayv2.GetRoutesInput{ApiId: apiId, MaxResults: &s1000}
+	gri := apigatewayv2.GetRoutesInput{
+		ApiId:      apiId,
+		MaxResults: aws.String("1000"),
+	}
 
 	for {
 		grOut, err := svc.apigateway.GetRoutes(dflCtx(), &gri)
@@ -445,7 +449,10 @@ func deleteRoutes(apiId *string) {
 }
 
 func deleteIntegrations(apiId *string) {
-	gii := apigatewayv2.GetIntegrationsInput{ApiId: apiId, MaxResults: &s1000}
+	gii := apigatewayv2.GetIntegrationsInput{
+		ApiId:      apiId,
+		MaxResults: aws.String("1000"),
+	}
 
 	for {
 		giOut, err := svc.apigateway.GetIntegrations(dflCtx(), &gii)
@@ -478,8 +485,6 @@ func deleteIntegrations(apiId *string) {
 }
 
 func deleteSecret() {
-	var two int32 = 2
-
 	lsi := secretsmanager.ListSecretsInput{
 		Filters: []smtypes.Filter{
 			{
@@ -487,7 +492,7 @@ func deleteSecret() {
 				Values: []string{*secret.Name},
 			},
 		},
-		MaxResults: &two,
+		MaxResults: aws.Int32(2),
 		SortOrder:  smtypes.SortOrderTypeDesc,
 	}
 
@@ -495,15 +500,13 @@ func deleteSecret() {
 	if err != nil {
 		log.Printf("unable to list secrets: %v\n", err)
 	} else {
-		var seven int64 = 7
-
 		numSecrets := len(lso.SecretList)
 		if numSecrets > 1 {
 			log.Printf("WARNING unexpected number of results for secrets: %d (expected 1)\n", numSecrets)
 		} else if numSecrets == 1 {
 			dsi := secretsmanager.DeleteSecretInput{
 				SecretId:             lso.SecretList[0].ARN,
-				RecoveryWindowInDays: &seven,
+				RecoveryWindowInDays: aws.Int64(7),
 			}
 			dsOut, err := svc.secretsmanager.DeleteSecret(dflCtx(), &dsi)
 			if err != nil {
@@ -567,7 +570,7 @@ func updateLambdas(base string, csl string) {
 				}
 			}
 
-			if !found && lambdaName != authorizerS {
+			if !found && lambdaName != "authorizer" {
 				log.Printf("unable to find lambda %s\n", lambdaName)
 				continue
 			}
@@ -617,7 +620,9 @@ func obtainIamLabRole() {
 }
 
 func getApiId() (*string, error) {
-	gasi := apigatewayv2.GetApisInput{MaxResults: &s1000}
+	gasi := apigatewayv2.GetApisInput{
+		MaxResults: aws.String("1000"),
+	}
 
 	for {
 		gaso, err := svc.apigateway.GetApis(dflCtx(), &gasi)
@@ -782,7 +787,7 @@ func getApiIdMayFail(apiId **string) {
 func getRouteIdMayFail(apiId *string, routeId **string) {
 	gri := apigatewayv2.GetRoutesInput{
 		ApiId:      apiId,
-		MaxResults: &s1000,
+		MaxResults: aws.String("1000"),
 	}
 
 	for {
@@ -808,7 +813,7 @@ func getRouteIdMayFail(apiId *string, routeId **string) {
 func getAuthorizerIdMayFail(apiId *string, authorizerId **string) {
 	gai := apigatewayv2.GetAuthorizersInput{
 		ApiId:      apiId,
-		MaxResults: &s1000,
+		MaxResults: aws.String("1000"),
 	}
 
 	for {

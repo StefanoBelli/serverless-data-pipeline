@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/apigatewayv2"
 	apitypes "github.com/aws/aws-sdk-go-v2/service/apigatewayv2/types"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -322,64 +323,64 @@ var SFN_AML_DEFINITION_FMT = `
 
 var tables = []dynamodb.CreateTableInput{
 	{
-		TableName: &validationStatus,
+		TableName: aws.String("validationStatus"),
 		AttributeDefinitions: []ddbtypes.AttributeDefinition{
 			{
-				AttributeName: &storeRequestUuid,
+				AttributeName: aws.String("StoreRequestId"),
 				AttributeType: ddbtypes.ScalarAttributeTypeN,
 			},
 		},
 		KeySchema: []ddbtypes.KeySchemaElement{
 			{
-				AttributeName: &storeRequestUuid,
+				AttributeName: aws.String("StoreRequestId"),
 				KeyType:       ddbtypes.KeyTypeHash,
 			},
 		},
 		BillingMode: ddbtypes.BillingModePayPerRequest,
 	},
 	{
-		TableName: &transformationStatus,
+		TableName: aws.String("transformationStatus"),
 		AttributeDefinitions: []ddbtypes.AttributeDefinition{
 			{
-				AttributeName: &storeRequestUuid,
+				AttributeName: aws.String("StoreRequestId"),
 				AttributeType: ddbtypes.ScalarAttributeTypeN,
 			},
 		},
 		KeySchema: []ddbtypes.KeySchemaElement{
 			{
-				AttributeName: &storeRequestUuid,
+				AttributeName: aws.String("StoreRequestId"),
 				KeyType:       ddbtypes.KeyTypeHash,
 			},
 		},
 		BillingMode: ddbtypes.BillingModePayPerRequest,
 	},
 	{
-		TableName: &storeStatus,
+		TableName: aws.String("storeStatus"),
 		AttributeDefinitions: []ddbtypes.AttributeDefinition{
 			{
-				AttributeName: &storeRequestUuid,
+				AttributeName: aws.String("StoreRequestId"),
 				AttributeType: ddbtypes.ScalarAttributeTypeN,
 			},
 		},
 		KeySchema: []ddbtypes.KeySchemaElement{
 			{
-				AttributeName: &storeRequestUuid,
+				AttributeName: aws.String("StoreRequestId"),
 				KeyType:       ddbtypes.KeyTypeHash,
 			},
 		},
 		BillingMode: ddbtypes.BillingModePayPerRequest,
 	},
 	{
-		TableName: &nycYellowTaxis,
+		TableName: aws.String("nycYellowTaxis"),
 		AttributeDefinitions: []ddbtypes.AttributeDefinition{
 			{
-				AttributeName: &storeRequestUuid,
+				AttributeName: aws.String("StoreRequestId"),
 				AttributeType: ddbtypes.ScalarAttributeTypeN,
 			},
 		},
 		KeySchema: []ddbtypes.KeySchemaElement{
 			{
-				AttributeName: &storeRequestUuid,
+				AttributeName: aws.String("StoreRequestId"),
 				KeyType:       ddbtypes.KeyTypeHash,
 			},
 		},
@@ -389,76 +390,76 @@ var tables = []dynamodb.CreateTableInput{
 
 var lambdas = []lambda.CreateFunctionInput{
 	{
-		FunctionName:  &validate,
+		FunctionName:  aws.String("validate"),
 		Role:          &iamLabRoleArn,
 		PackageType:   lmbdtypes.PackageTypeZip,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeProvidedal2023,
-		Handler:       &bootstrap,
-		Timeout:       &lambdaTimeout,
+		Handler:       aws.String("bootstrap"),
+		Timeout:       aws.Int32(10),
 	},
 	{
-		FunctionName:  &transform,
+		FunctionName:  aws.String("transform"),
 		Role:          &iamLabRoleArn,
 		PackageType:   lmbdtypes.PackageTypeZip,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeProvidedal2023,
-		Handler:       &bootstrap,
-		Timeout:       &lambdaTimeout,
+		Handler:       aws.String("bootstrap"),
+		Timeout:       aws.Int32(10),
 	},
 	{
-		FunctionName:  &store,
+		FunctionName:  aws.String("store"),
 		Role:          &iamLabRoleArn,
 		PackageType:   lmbdtypes.PackageTypeZip,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeProvidedal2023,
-		Handler:       &bootstrap,
-		Timeout:       &lambdaTimeout,
+		Handler:       aws.String("bootstrap"),
+		Timeout:       aws.Int32(10),
 	},
 	{
-		FunctionName:  &flagValidateFailed,
+		FunctionName:  aws.String("flagValidateFailed"),
 		Role:          &iamLabRoleArn,
 		PackageType:   lmbdtypes.PackageTypeZip,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeProvidedal2023,
-		Handler:       &bootstrap,
-		Timeout:       &lambdaTimeout,
+		Handler:       aws.String("bootstrap"),
+		Timeout:       aws.Int32(10),
 	},
 	{
-		FunctionName:  &flagTransformFailed,
+		FunctionName:  aws.String("flagTransformFailed"),
 		Role:          &iamLabRoleArn,
 		PackageType:   lmbdtypes.PackageTypeZip,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeProvidedal2023,
-		Handler:       &bootstrap,
-		Timeout:       &lambdaTimeout,
+		Handler:       aws.String("bootstrap"),
+		Timeout:       aws.Int32(10),
 	},
 	{
-		FunctionName:  &flagStoreFailed,
+		FunctionName:  aws.String("flagStoreFailed"),
 		Role:          &iamLabRoleArn,
 		PackageType:   lmbdtypes.PackageTypeZip,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeProvidedal2023,
-		Handler:       &bootstrap,
-		Timeout:       &lambdaTimeout,
+		Handler:       aws.String("bootstrap"),
+		Timeout:       aws.Int32(10),
 	},
 }
 
 var stateMachine = sfn.CreateStateMachineInput{
-	Name:    &criticalDataPipeline,
+	Name:    aws.String("CriticalDataPipeline"),
 	RoleArn: &iamLabRoleArn,
 }
 
 var api = apigatewayv2.CreateApiInput{
-	Name:         &pipeline,
+	Name:         aws.String("pipeline"),
 	ProtocolType: apitypes.ProtocolTypeHttp,
 }
 
 var integration = apigatewayv2.CreateIntegrationInput{
-	Description:          &criticalDataPipelineIntegration,
+	Description:          aws.String("CriticalDataPipeline integration"),
 	IntegrationType:      apitypes.IntegrationTypeAwsProxy,
-	IntegrationSubtype:   &startExecution,
-	PayloadFormatVersion: &oneDotZero,
+	IntegrationSubtype:   aws.String("StepFunctions-StartExecution"),
+	PayloadFormatVersion: aws.String("1.0"),
 	CredentialsArn:       &iamLabRoleArn,
 	RequestParameters: map[string]string{
 		"Input": "$request.body",
@@ -466,20 +467,20 @@ var integration = apigatewayv2.CreateIntegrationInput{
 }
 
 var route = apigatewayv2.CreateRouteInput{
-	RouteKey: &postSlashStore,
+	RouteKey: aws.String("POST /store"),
 }
 
 var secret = secretsmanager.CreateSecretInput{
-	Name:        &dataPipelineAuthSecret,
-	Description: &secretDescription,
+	Name:        aws.String("DataPipelineAuthKey"),
+	Description: aws.String("secret for data pipeline HTTP methods"),
 }
 
 var authorizer = apigatewayv2.CreateAuthorizerInput{
-	Name:                           &dataPipelineAuthorizer,
+	Name:                           aws.String("DataPipelineAuthorizer"),
 	AuthorizerType:                 apitypes.AuthorizerTypeRequest,
 	IdentitySource:                 []string{"$request.header.Authorization"},
-	AuthorizerPayloadFormatVersion: &twoDotZero,
-	AuthorizerResultTtlInSeconds:   &zeroVal,
-	EnableSimpleResponses:          &trueVal,
+	AuthorizerPayloadFormatVersion: aws.String("2.0"),
+	AuthorizerResultTtlInSeconds:   aws.Int32(0),
+	EnableSimpleResponses:          aws.Bool(true),
 	AuthorizerCredentialsArn:       &iamLabRoleArn,
 }

@@ -9,21 +9,24 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 )
 
+/* not exported */
 func dflCtx() context.Context {
 	return context.TODO()
 }
 
-type TupleStatus struct {
-	StoreRequestUuid int64  `dynamodbav:"StoreRequestUUID"`
-	RawTuple         string `dynamodbav:"RawTuple"`
-	StatusReason     int32  `dynamodbav:"StatusReason"`
+type tupleStatus struct {
+	StoreRequestId uint64 `dynamodbav:"StoreRequestId"`
+	RawTuple       string `dynamodbav:"RawTuple"`
+	StatusReason   int32  `dynamodbav:"StatusReason"`
 }
 
-func BuildDefaultTupleStatus(uuid int64, rawTuple *string) TupleStatus {
-	return TupleStatus{
-		StoreRequestUuid: uuid,
-		RawTuple:         *rawTuple,
-		StatusReason:     0,
+/* exported */
+
+func BuildDefaultTupleStatus(id uint64, rawTuple *string) interface{} {
+	return tupleStatus{
+		StoreRequestId: id,
+		RawTuple:       *rawTuple,
+		StatusReason:   0,
 	}
 }
 

@@ -2,10 +2,12 @@ module dyndbutils
 
 go 1.22.2
 
-require github.com/aws/aws-sdk-go-v2/config v1.27.13
+require (
+	github.com/aws/aws-sdk-go-v2/config v1.27.13
+	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.32.1
+)
 
 require (
-	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.32.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.20.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.9.6 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect

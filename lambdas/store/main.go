@@ -10,19 +10,19 @@ import (
 )
 
 var FINAL_TABLE_NAME = "nycYellowTaxis"
-var STATUS_TABLE_NAME = "validationStatus"
+var STATUS_TABLE_NAME = "storeStatus"
 
 type TupleStoreRequest struct {
-	Success         bool   `json:"success"`
-	Reason          int    `json:"reason"`
-	TransactionUuid int64  `json:"transactionUuid"`
-	Tuple           string `json:"tuple"`
+	Success       bool   `json:"success"`
+	Reason        int    `json:"reason"`
+	TransactionId uint64 `json:"transactionId"`
+	Tuple         string `json:"tuple"`
 }
 
 type TupleStoreResponse struct {
-	Success         bool  `json:"success"`
-	Reason          int   `json:"reason"`
-	TransactionUuid int64 `json:"transactionUuid"`
+	Success       bool   `json:"success"`
+	Reason        int    `json:"reason"`
+	TransactionId uint64 `json:"transactionId"`
 }
 
 type StoreError struct {
@@ -44,7 +44,7 @@ func validResponse() (TupleStoreResponse, error) {
 }
 
 type NycYellowTaxiEntry struct {
-	StoreRequestUuid     int64   `dynamodbav:"StoreRequestUUID"`
+	StoreRequestId       uint64  `dynamodbav:"StoreRequestId"`
 	VendorId             string  `dynamodbav:"VendorId"`
 	PickupTime           string  `dynamodbav:"PickupTime"`
 	DropoffTime          string  `dynamodbav:"DropoffTime"`
@@ -84,12 +84,12 @@ func firstEncounteredError(errors *[]error) error {
 	return nil
 }
 
-func populateEntryByRawTuple(entry *NycYellowTaxiEntry, uuid int64, rawTuple *string) error {
+func populateEntryByRawTuple(entry *NycYellowTaxiEntry, id uint64, rawTuple *string) error {
 	errs := make([]error, 13)
 
 	fields := strings.Split(*rawTuple, "\t")
 
-	entry.StoreRequestUuid = uuid
+	entry.StoreRequestId = id
 	entry.VendorId = fields[1]
 	entry.PickupTime = fields[2]
 	entry.DropoffTime = fields[3]
@@ -121,7 +121,7 @@ func handler(e TupleStoreRequest) (TupleStoreResponse, error) {
 
 	err = dyndbutils.PutInTable(
 		ddbSvc,
-		dyndbutils.BuildDefaultTupleStatus(e.TransactionUuid, &e.Tuple),
+		dyndbutils.BuildDefaultTupleStatus(e.TransactionId, &e.Tuple),
 		&STATUS_TABLE_NAME)
 	if err != nil {
 		return erroredResponse("unable to put raw tuple", err)
@@ -129,7 +129,7 @@ func handler(e TupleStoreRequest) (TupleStoreResponse, error) {
 
 	nyte := NycYellowTaxiEntry{}
 
-	err = populateEntryByRawTuple(&nyte, e.TransactionUuid, &e.Tuple)
+	err = populateEntryByRawTuple(&nyte, e.TransactionId, &e.Tuple)
 	if err != nil {
 		return erroredResponse("unable to populate entry from raw tuple", err)
 	}

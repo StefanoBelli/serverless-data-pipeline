@@ -13,15 +13,15 @@ import (
 var TABLE_NAME = "transformationStatus"
 
 type TupleTransformationResponse struct {
-	Success         bool   `json:"success"`
-	Reason          int    `json:"reason"`
-	TransactionUuid int64  `json:"transactionUuid"`
-	Tuple           string `json:"tuple"`
+	Success       bool   `json:"success"`
+	Reason        int    `json:"reason"`
+	TransactionId uint64 `json:"transactionId"`
+	Tuple         string `json:"tuple"`
 }
 
 type TupleTransformationRequest struct {
-	TransactionUuid int64  `json:"transactionUuid"`
-	Tuple           string `json:"tuple"`
+	TransactionId uint64 `json:"transactionId"`
+	Tuple         string `json:"tuple"`
 }
 
 type TransformError struct {
@@ -40,19 +40,19 @@ func erroredResponse(msg string, err error) (TupleTransformationResponse, error)
 
 func validResponse(e *TupleTransformationRequest) (TupleTransformationResponse, error) {
 	return TupleTransformationResponse{
-		Success:         true,
-		Reason:          0,
-		TransactionUuid: e.TransactionUuid,
-		Tuple:           e.Tuple,
+		Success:       true,
+		Reason:        0,
+		TransactionId: e.TransactionId,
+		Tuple:         e.Tuple,
 	}, nil
 }
 
 func invalidResponse(e *TupleTransformationRequest) (TupleTransformationResponse, error) {
 	return TupleTransformationResponse{
-		Success:         false,
-		Reason:          2,
-		TransactionUuid: e.TransactionUuid,
-		Tuple:           e.Tuple,
+		Success:       false,
+		Reason:        2,
+		TransactionId: e.TransactionId,
+		Tuple:         e.Tuple,
 	}, nil
 }
 
@@ -103,7 +103,7 @@ func handler(e TupleTransformationRequest) (TupleTransformationResponse, error) 
 
 	err = dyndbutils.PutInTable(
 		ddbSvc,
-		dyndbutils.BuildDefaultTupleStatus(e.TransactionUuid, &e.Tuple),
+		dyndbutils.BuildDefaultTupleStatus(e.TransactionId, &e.Tuple),
 		&TABLE_NAME)
 	if err != nil {
 		return erroredResponse("unable to put raw tuple", err)
