@@ -63,7 +63,8 @@ func closeChansWithErr(myerr error, chs *ColumnNoiseGenerationChannels) {
 }
 
 func discardFirstEntriesAsRequired(csv *Csv) error {
-	for range programConfig.injector.startAt {
+	n := programConfig.injector.startAt
+	for i := int32(0); i < n; i++ {
 		_, err := csv.readNextLine()
 		if err != nil {
 			return err

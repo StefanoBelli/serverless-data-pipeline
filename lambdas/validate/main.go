@@ -5,7 +5,7 @@ import (
 	"errors"
 	"failsim"
 	"fmt"
-	"math/rand/v2"
+	"math/rand"
 	"strconv"
 	"strings"
 	"time"
@@ -51,7 +51,7 @@ func erroredResponse(msg string, err error) (TupleValidationResponse, error) {
 }
 
 func calculateTransactionId(rawTuple *string, unix32BeginTime int64) uint64 {
-	var id uint64 = uint64(unix32BeginTime) + uint64(rand.IntN(10000))
+	var id uint64 = uint64(unix32BeginTime) + uint64(rand.Intn(10000))
 	for i, c := range *rawTuple {
 		id += uint64(c) * uint64(i)
 	}
@@ -97,31 +97,28 @@ func handler(e TupleValidationRequest) (TupleValidationResponse, error) {
 	}
 
 	ddbSvc, err := dyndbutils.NewDynamoDbService()
-
-	if err == nil {
-		err = failsim.OopsFailed()
-	}
-
 	if err != nil {
 		return erroredResponse("unable to load dynamodb service", err)
 	}
 
 	transactionId := calculateTransactionId(&e.Tuple, transactionBeginTime)
 
+	// FAILSIM
+	if err := failsim.OopsFailed(); err != nil {
+		return erroredResponse("unable to put raw table", err)
+	}
+	// FAILSIM
+
 	err = dyndbutils.PutInTable(
 		ddbSvc,
 		dyndbutils.BuildDefaultTupleStatus(transactionId, &e.Tuple),
 		&TABLE_NAME)
 
-	if err == nil {
-		err = failsim.OopsFailed()
-	}
-
 	if err != nil {
 		return erroredResponse("unable to put raw tuple", err)
 	}
 
-	if fieldChecksAreOk(&fixedTuple) && failsim.OopsFailed() == nil {
+	if fieldChecksAreOk(&fixedTuple) {
 		return validResponse(transactionId, &fixedTuple)
 	} else {
 		return invalidResponse(transactionId)
@@ -355,7 +352,7 @@ var crossColumnCheckers = []CrossColumnChecker{
 				return false
 			}
 
-			return d1.Compare(d2) == -1
+			return d1.Before(d2)
 		},
 	},
 	{

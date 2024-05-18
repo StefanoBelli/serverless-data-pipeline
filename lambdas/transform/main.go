@@ -98,29 +98,26 @@ func performDataTransformation(rawTuple *string) bool {
 
 func handler(e TupleTransformationRequest) (TupleTransformationResponse, error) {
 	ddbSvc, err := dyndbutils.NewDynamoDbService()
-
-	if err == nil {
-		err = failsim.OopsFailed()
-	}
-
 	if err != nil {
 		return erroredResponse("unable to load dynamodb service", err)
 	}
+
+	// FAILSIM
+	if err := failsim.OopsFailed(); err != nil {
+		return erroredResponse("unable to put raw tuple", err)
+	}
+	// FAILSIM
 
 	err = dyndbutils.PutInTable(
 		ddbSvc,
 		dyndbutils.BuildDefaultTupleStatus(e.TransactionId, &e.Tuple),
 		&TABLE_NAME)
 
-	if err == nil {
-		err = failsim.OopsFailed()
-	}
-
 	if err != nil {
 		return erroredResponse("unable to put raw tuple", err)
 	}
 
-	if performDataTransformation(&e.Tuple) && failsim.OopsFailed() == nil {
+	if performDataTransformation(&e.Tuple) && /* FAILSIM */ failsim.OopsFailed() == nil /* FAILSIM */ {
 		return validResponse(&e)
 	} else {
 		return invalidResponse(&e)

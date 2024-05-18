@@ -16,7 +16,7 @@ import (
 
 const DEFAULT_CSV_SEPARATOR = ","
 
-const DEFAULT_API_ENDPOINT = "https://mti5e08ck7.execute-api.us-east-1.amazonaws.com"
+const DEFAULT_API_ENDPOINT = "https://serhvvbg7c.execute-api.us-east-1.amazonaws.com"
 const DEFAULT_AUTH_KEY = ""
 
 const DEFAULT_START_AT = "0"

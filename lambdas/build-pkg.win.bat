@@ -23,7 +23,14 @@ set CGO_ENABLED=0
 set start=0
 set end=6
 
+set failsimflag=,ENABLE_FAILSIM
+
 if "%~1"=="" goto all
+
+if "%~1" == "-d" (
+    Set failsimflag=
+    goto all
+)
 
 for /l %%i in (!start!,1,!end!) do (
     if !lambdas[%%i]! == %1 (
@@ -38,7 +45,13 @@ if !start! NEQ !end! (
     exit 1
 )
 
+if "%~2" =="-d" (
+    Set failsimflag=
+)
+
 :all
+
+echo failsimflag=!failsimflag!
 
 for /l %%i in (!start!,1,!end!) do (
     echo building lambda !lambdas[%%i]!...
@@ -49,7 +62,7 @@ for /l %%i in (!start!,1,!end!) do (
     set SOURCE=main.go
 
     echo  - building
-    go build -tags=lambda.norpc,ENABLE_FAILSIM -o !BOOTSTRAP_DIR!/bootstrap !SOURCE!
+    go build -tags=lambda.norpc!failsimflag! -o !BOOTSTRAP_DIR!/bootstrap !SOURCE!
 
     echo  - packaging
 

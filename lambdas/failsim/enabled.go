@@ -5,11 +5,11 @@ package failsim
 
 import (
 	"errors"
-	"math/rand/v2"
+	"math/rand"
 )
 
 func OopsFailed() error {
-	if rand.IntN(100) == 60 {
+	if rand.Intn(100) == 60 {
 		return errors.New("fail simulation")
 	}
 
