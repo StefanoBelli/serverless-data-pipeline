@@ -281,7 +281,7 @@ type RequestBody struct {
 
 type ResponseBody struct {
 	ExecutionArn string `json:"executionArn"`
-	StartDate    string `json:"startDate"`
+	//StartDate    uint64 `json:"startDate"`
 }
 
 func inject(path string) error {
@@ -299,20 +299,20 @@ func inject(path string) error {
 		generateTupleWiseNoise(&entry, &tupleWiseNoiseGens)
 		reqBodyBytes, err := json.Marshal(&RequestBody{Tuple: entry})
 		if err != nil {
-			log.Printf("\n --> Unable to parse JSON (ignoring): %s\n",
+			log.Printf(" --> Unable to parse JSON (ignoring): %s\n",
 				err.Error())
 		} else {
 			resBodyBytes, err := makeHttpPost(&reqBodyBytes)
 			if err != nil {
-				log.Printf("\n --> HTTP client error (ignoring): %s - %s\n",
+				log.Printf(" --> HTTP client error (ignoring): %s - %s\n",
 					string(resBodyBytes), err.Error())
 			} else {
 				smExec := ResponseBody{}
 				if err := json.Unmarshal(resBodyBytes, &smExec); err != nil {
-					log.Printf("\n --> Unable to parse JSON (ignoring): %s\n", err)
+					log.Printf(" --> Unable to parse JSON (ignoring): %s\n", err)
 				} else {
-					fmt.Printf(" --> Injected %d entries. exec = { arn: %s, start: %s }\r",
-						i, smExec.ExecutionArn, smExec.StartDate)
+					fmt.Printf(" --> Injected %d entries. exec = { arn: %s, start: [...] }\r",
+						i, smExec.ExecutionArn)
 					i++
 				}
 			}
