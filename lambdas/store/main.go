@@ -2,6 +2,7 @@ package main
 
 import (
 	"dyndbutils"
+	"failsim"
 	"fmt"
 	"strconv"
 	"strings"
@@ -115,6 +116,11 @@ func populateEntryByRawTuple(entry *NycYellowTaxiEntry, id uint64, rawTuple *str
 
 func handler(e TupleStoreRequest) (TupleStoreResponse, error) {
 	ddbSvc, err := dyndbutils.NewDynamoDbService()
+
+	if err == nil {
+		err = failsim.OopsFailed()
+	}
+
 	if err != nil {
 		return erroredResponse("unable to load dynamodb service", err)
 	}
@@ -123,6 +129,11 @@ func handler(e TupleStoreRequest) (TupleStoreResponse, error) {
 		ddbSvc,
 		dyndbutils.BuildDefaultTupleStatus(e.TransactionId, &e.Tuple),
 		&STATUS_TABLE_NAME)
+
+	if err == nil {
+		err = failsim.OopsFailed()
+	}
+
 	if err != nil {
 		return erroredResponse("unable to put raw tuple", err)
 	}
@@ -130,6 +141,11 @@ func handler(e TupleStoreRequest) (TupleStoreResponse, error) {
 	nyte := NycYellowTaxiEntry{}
 
 	err = populateEntryByRawTuple(&nyte, e.TransactionId, &e.Tuple)
+
+	if err == nil {
+		err = failsim.OopsFailed()
+	}
+
 	if err != nil {
 		return erroredResponse("unable to populate entry from raw tuple", err)
 	}
@@ -138,6 +154,11 @@ func handler(e TupleStoreRequest) (TupleStoreResponse, error) {
 		ddbSvc,
 		nyte,
 		&FINAL_TABLE_NAME)
+
+	if err == nil {
+		err = failsim.OopsFailed()
+	}
+
 	if err != nil {
 		return erroredResponse("unable to put entry in final table", err)
 	}

@@ -49,7 +49,7 @@ for /l %%i in (!start!,1,!end!) do (
     set SOURCE=main.go
 
     echo  - building
-    go build -tags lambda.norpc -o !BOOTSTRAP_DIR!/bootstrap !SOURCE!
+    go build -tags=lambda.norpc,ENABLE_FAILSIM -o !BOOTSTRAP_DIR!/bootstrap !SOURCE!
 
     echo  - packaging
 

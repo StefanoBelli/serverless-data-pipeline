@@ -4,6 +4,8 @@ go 1.22.2
 
 replace dyndbutils => ../dyndbutils
 
+replace failsim => ../failsim
+
 require github.com/aws/aws-lambda-go v1.47.0
 
 require (
@@ -21,6 +23,7 @@ require (
 
 require (
 	dyndbutils v0.0.0-00010101000000-000000000000
+	failsim v0.0.0-00010101000000-000000000000
 	github.com/aws/aws-sdk-go-v2 v1.26.1 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.3.5 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.6.5 // indirect

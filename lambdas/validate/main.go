@@ -3,6 +3,7 @@ package main
 import (
 	"dyndbutils"
 	"errors"
+	"failsim"
 	"fmt"
 	"math/rand/v2"
 	"strconv"
@@ -96,6 +97,11 @@ func handler(e TupleValidationRequest) (TupleValidationResponse, error) {
 	}
 
 	ddbSvc, err := dyndbutils.NewDynamoDbService()
+
+	if err == nil {
+		err = failsim.OopsFailed()
+	}
+
 	if err != nil {
 		return erroredResponse("unable to load dynamodb service", err)
 	}
@@ -106,11 +112,16 @@ func handler(e TupleValidationRequest) (TupleValidationResponse, error) {
 		ddbSvc,
 		dyndbutils.BuildDefaultTupleStatus(transactionId, &e.Tuple),
 		&TABLE_NAME)
+
+	if err == nil {
+		err = failsim.OopsFailed()
+	}
+
 	if err != nil {
 		return erroredResponse("unable to put raw tuple", err)
 	}
 
-	if fieldChecksAreOk(&fixedTuple) {
+	if fieldChecksAreOk(&fixedTuple) && failsim.OopsFailed() == nil {
 		return validResponse(transactionId, &fixedTuple)
 	} else {
 		return invalidResponse(transactionId)

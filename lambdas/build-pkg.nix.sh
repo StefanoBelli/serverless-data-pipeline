@@ -31,7 +31,7 @@ build() {
         SOURCE=main.go
 
         echo " - building"
-        go build -tags lambda.norpc -o $BOOTSTRAP $SOURCE
+        go build -tags=lambda.norpc,ENABLE_FAILSIM -o $BOOTSTRAP $SOURCE
 
         echo " - packaging"
         zip -r -j $ZIP $BOOTSTRAP

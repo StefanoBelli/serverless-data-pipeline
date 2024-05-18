@@ -2,6 +2,7 @@ package main
 
 import (
 	"dyndbutils"
+	"failsim"
 	"fmt"
 	"strconv"
 	"strings"
@@ -97,6 +98,11 @@ func performDataTransformation(rawTuple *string) bool {
 
 func handler(e TupleTransformationRequest) (TupleTransformationResponse, error) {
 	ddbSvc, err := dyndbutils.NewDynamoDbService()
+
+	if err == nil {
+		err = failsim.OopsFailed()
+	}
+
 	if err != nil {
 		return erroredResponse("unable to load dynamodb service", err)
 	}
@@ -105,11 +111,16 @@ func handler(e TupleTransformationRequest) (TupleTransformationResponse, error) 
 		ddbSvc,
 		dyndbutils.BuildDefaultTupleStatus(e.TransactionId, &e.Tuple),
 		&TABLE_NAME)
+
+	if err == nil {
+		err = failsim.OopsFailed()
+	}
+
 	if err != nil {
 		return erroredResponse("unable to put raw tuple", err)
 	}
 
-	if performDataTransformation(&e.Tuple) {
+	if performDataTransformation(&e.Tuple) && failsim.OopsFailed() == nil {
 		return validResponse(&e)
 	} else {
 		return invalidResponse(&e)
