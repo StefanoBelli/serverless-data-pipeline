@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -271,21 +275,48 @@ var tupleWiseNoiseGens = []TupleWiseNoiseGenerator{
 	},
 }
 
+type RequestBody struct {
+	Tuple string `json:"tuple"`
+}
+
+type ResponseBody struct {
+	ExecutionArn string `json:"executionArn"`
+	StartDate    string `json:"startDate"`
+}
+
 func inject(path string) error {
 	var genChans ColumnNoiseGenerationChannels
 
 	genChans.outEntry = make(chan string)
 	genChans.outErr = make(chan error)
 
-	go generateColumnNoise(path, columnNoiseGens, genChans)
+	go readTuplesAndGenerateColumnNoise(path, columnNoiseGens, genChans)
 
 	fmt.Printf(" --> Injected 0 entries\r")
 
 	i := 1
-	for range genChans.outEntry {
-		//fmt.Println(entry) //TODO later replace by HTTP GET to endpoint
-		fmt.Printf(" --> Injected %d entries\r", i)
-		i++
+	for entry := range genChans.outEntry {
+		generateTupleWiseNoise(&entry, &tupleWiseNoiseGens)
+		reqBodyBytes, err := json.Marshal(&RequestBody{Tuple: entry})
+		if err != nil {
+			log.Printf("\n --> Unable to parse JSON (ignoring): %s\n",
+				err.Error())
+		} else {
+			resBodyBytes, err := makeHttpPost(&reqBodyBytes)
+			if err != nil {
+				log.Printf("\n --> HTTP client error (ignoring): %s - %s\n",
+					string(resBodyBytes), err.Error())
+			} else {
+				smExec := ResponseBody{}
+				if err := json.Unmarshal(resBodyBytes, &smExec); err != nil {
+					log.Printf("\n --> Unable to parse JSON (ignoring): %s\n", err)
+				} else {
+					fmt.Printf(" --> Injected %d entries. exec = { arn: %s, start: %s }\r",
+						i, smExec.ExecutionArn, smExec.StartDate)
+					i++
+				}
+			}
+		}
 	}
 
 	fmt.Println()
@@ -298,6 +329,32 @@ func inject(path string) error {
 	return myErr
 }
 
-func makeHttpPost(body *string) *string {
-	return nil
+func makeHttpPost(body *[]byte) ([]byte, error) {
+	url := programConfig.injector.http.apiEndpoint + "/store"
+
+	httpClient := &http.Client{}
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(*body))
+	if err != nil {
+		return []byte("request builder"), err
+	}
+
+	req.Header.Add("Content-Type", "application/json")
+
+	if len(programConfig.injector.http.authKey) != 0 {
+		req.Header.Add("Authorization", programConfig.injector.http.authKey)
+	}
+
+	res, err := httpClient.Do(req)
+	if err != nil {
+		return []byte("request issuer (http client)"), err
+	}
+
+	defer res.Body.Close()
+
+	resBody, err := io.ReadAll(res.Body)
+	if err != nil {
+		return []byte("response body buffer reader"), err
+	}
+
+	return resBody, nil
 }
