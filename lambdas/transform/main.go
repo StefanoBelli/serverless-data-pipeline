@@ -71,7 +71,6 @@ func invalidResponse(e *TupleTransformationRequest) (TupleTransformationResponse
  *  - Passenger_count from float to int
  *
  * Transform fails for:
- *  - negative USD
  *  - unknown mapping from code to mnemonic value (striclty follows PDF above)
  */
 func performDataTransformation(rawTuple *string) bool {
