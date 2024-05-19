@@ -377,11 +377,19 @@ var tables = []dynamodb.CreateTableInput{
 				AttributeName: aws.String("StoreRequestId"),
 				AttributeType: ddbtypes.ScalarAttributeTypeN,
 			},
+			{
+				AttributeName: aws.String("EntryIdx"),
+				AttributeType: ddbtypes.ScalarAttributeTypeN,
+			},
 		},
 		KeySchema: []ddbtypes.KeySchemaElement{
 			{
 				AttributeName: aws.String("StoreRequestId"),
 				KeyType:       ddbtypes.KeyTypeHash,
+			},
+			{
+				AttributeName: aws.String("EntryIdx"),
+				KeyType:       ddbtypes.KeyTypeRange,
 			},
 		},
 		BillingMode: ddbtypes.BillingModePayPerRequest,

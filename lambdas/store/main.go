@@ -46,6 +46,7 @@ func validResponse() (TupleStoreResponse, error) {
 
 type NycYellowTaxiEntry struct {
 	StoreRequestId       uint64  `dynamodbav:"StoreRequestId"`
+	EntryIdx             int64   `dynamodbav:"EntryIdx"`
 	VendorId             string  `dynamodbav:"VendorId"`
 	PickupTime           string  `dynamodbav:"PickupTime"`
 	DropoffTime          string  `dynamodbav:"DropoffTime"`
@@ -86,30 +87,31 @@ func firstEncounteredError(errors *[]error) error {
 }
 
 func populateEntryByRawTuple(entry *NycYellowTaxiEntry, id uint64, rawTuple *string) error {
-	errs := make([]error, 13)
+	errs := make([]error, 14)
 
 	fields := strings.Split(*rawTuple, "\t")
 
 	entry.StoreRequestId = id
+	entry.EntryIdx, errs[0] = parseDecInt64(&fields[0])
 	entry.VendorId = fields[1]
 	entry.PickupTime = fields[2]
 	entry.DropoffTime = fields[3]
-	entry.PassengerCount, errs[0] = parseDecInt64(&fields[4])
-	entry.TripDistance, errs[1] = parseFloat64(&fields[5])
+	entry.PassengerCount, errs[1] = parseDecInt64(&fields[4])
+	entry.TripDistance, errs[2] = parseFloat64(&fields[5])
 	entry.RatecodeId = fields[6]
 	entry.StoreAndFwdFlag = fields[7]
-	entry.PuLocationId, errs[2] = parseDecInt64(&fields[8])
-	entry.DoLocationId, errs[3] = parseDecInt64(&fields[9])
+	entry.PuLocationId, errs[3] = parseDecInt64(&fields[8])
+	entry.DoLocationId, errs[4] = parseDecInt64(&fields[9])
 	entry.PaymentType = fields[10]
-	entry.FareAmount, errs[4] = parseFloat64(&fields[11])
-	entry.Extra, errs[5] = parseFloat64(&fields[12])
-	entry.MtaTax, errs[6] = parseFloat64(&fields[13])
-	entry.TipAmount, errs[7] = parseFloat64(&fields[14])
-	entry.TollsAmount, errs[8] = parseFloat64(&fields[15])
-	entry.ImprovementSurcharge, errs[9] = parseFloat64(&fields[16])
-	entry.TotalAmount, errs[10] = parseFloat64(&fields[17])
-	entry.CongestionSurcharge, errs[11] = parseFloat64(&fields[18])
-	entry.AirportFee, errs[12] = parseFloat64(&fields[19])
+	entry.FareAmount, errs[5] = parseFloat64(&fields[11])
+	entry.Extra, errs[6] = parseFloat64(&fields[12])
+	entry.MtaTax, errs[7] = parseFloat64(&fields[13])
+	entry.TipAmount, errs[8] = parseFloat64(&fields[14])
+	entry.TollsAmount, errs[9] = parseFloat64(&fields[15])
+	entry.ImprovementSurcharge, errs[10] = parseFloat64(&fields[16])
+	entry.TotalAmount, errs[11] = parseFloat64(&fields[17])
+	entry.CongestionSurcharge, errs[12] = parseFloat64(&fields[18])
+	entry.AirportFee, errs[13] = parseFloat64(&fields[19])
 
 	return firstEncounteredError(&errs)
 }
