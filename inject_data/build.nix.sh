@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 SOURCES="csv_parser.go cngen.go twngen.go injector.go main.go"
 
