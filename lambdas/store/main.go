@@ -69,10 +69,18 @@ type NycYellowTaxiEntry struct {
 }
 
 func parseDecInt64(from *string) (int64, error) {
+	if len(*from) == 0 {
+		return 0, nil
+	}
+
 	return strconv.ParseInt(*from, 10, 32)
 }
 
 func parseFloat64(from *string) (float64, error) {
+	if len(*from) == 0 {
+		return 0, nil
+	}
+
 	return strconv.ParseFloat(*from, 64)
 }
 
