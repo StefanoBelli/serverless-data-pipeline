@@ -79,6 +79,11 @@ In this particular order (starting from this project root):
  $ ./inject_data --api-endpoint <yourCopiedEndpoint> --every-ms 2000
  ~~~
 
+The injector will start to read the dataset (dirtying tuples, if it chose to, based on values got by a PRNG) and push tuples to the preprocessing pipeline!!
+
+The injector can be stopped using CTRL+C, since some data have already been sent to the pipeline: when restarting the injector, just use --start-at option to define at which line
+of the dataset the injector must resume sending tuples.
+
 NOTE: that on the first time it is being run, injector will download the dataset from my own Google Drive public folder
 
 NOTE: limiting the rate by using --every-ms is strongly reccomended to avoid account deactivation (lots of lambdas running at the same time)
