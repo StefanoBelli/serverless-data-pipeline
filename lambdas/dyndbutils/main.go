@@ -1,3 +1,7 @@
+/*
+ * package contains exported and commonly-used functions to avoid excessive
+ * code duplications. Code is self-explainatory and easy to read
+ */
 package dyndbutils
 
 import (
@@ -22,6 +26,7 @@ type tupleStatus struct {
 
 /* exported */
 
+// Build a tuple with no error (transaction status: success)
 func BuildDefaultTupleStatus(id uint64, rawTuple *string) interface{} {
 	return tupleStatus{
 		StoreRequestId: id,
@@ -30,6 +35,7 @@ func BuildDefaultTupleStatus(id uint64, rawTuple *string) interface{} {
 	}
 }
 
+// Put an item in whatever dynamodb table
 func PutInTable(dyndb *dynamodb.Client, ent interface{}, table *string) error {
 	item, err := attributevalue.MarshalMap(ent)
 	if err != nil {
@@ -44,7 +50,9 @@ func PutInTable(dyndb *dynamodb.Client, ent interface{}, table *string) error {
 	return err
 }
 
+// Obtain a new DynamoDB client
 func NewDynamoDbService() (*dynamodb.Client, error) {
+	// the "light" VM which runs this lambda has AWS_REGION env var set
 	awsConfig, err := config.LoadDefaultConfig(
 		dflCtx(),
 		config.WithRegion(os.Getenv("AWS_REGION")))

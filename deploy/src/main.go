@@ -37,14 +37,39 @@ type AwsServiceClients struct {
 	secretsmanager *secretsmanager.Client
 }
 
+// Pre-initialized services clients
 var svc AwsServiceClients
-var iamLabRoleArn string
+
+// Internal usage to link lambdas, and sfn
+var iamRoleArn string
 var lambdasArns []string
 
 /*
  * AWS create resources
+ *
+ * If resource is created correctly, then we just print out some details
+ * "create <resource> [details...]"
+ *
+ * Most of the code is self-explainatory
+ *
+ * If one step fails, program will *NOT* terminate but try anyway to perform the
+ * steps that follows the one that failed
+ *
+ * Use option -h to get help on options
+ *
+ * PLEASE NOTE: lambdas handling deals with ZIP packages containing machine code (ELF, linux)
+ *              so both the createLambdas and the updateLambdas will need to know where those
+ *              packages are: by default it is ../../lambdas/pkgs considering that the deployment
+ *              program is built and then placed into ../bin directory (this can be changed with option -p)
+ *              the pkgs/ directory containging ZIPs MUST follow this structure:
+ *              pkgs/
+ *               | -- lambda-name/
+ *               |     | -- lambda-name.zip
+ *               | -- another-lambda-name/
+ *                     | -- another-lambda-name.zip
  */
 
+// Create simple AWS DynamoDB tables (see config.go)
 func createTables() {
 	for _, table := range tables {
 		opOut, err := svc.dynamodb.CreateTable(dflCtx(), &table)
@@ -59,6 +84,7 @@ func createTables() {
 	}
 }
 
+// Create API Gateway endpoint
 func createApi() *string {
 	_, err := getApiId()
 	if err == nil {
@@ -77,6 +103,7 @@ func createApi() *string {
 	}
 }
 
+// Create deployment (API gateway-related)
 func createDeployment(apiId *string, stageName *string) {
 	cdi := apigatewayv2.CreateDeploymentInput{
 		ApiId:     apiId,
@@ -95,6 +122,7 @@ func createDeployment(apiId *string, stageName *string) {
 	}
 }
 
+// Enable stage auto deployment (API gateway-related)
 func enableStageAutoDeploy(apiId *string, stageName *string) {
 	usi := apigatewayv2.UpdateStageInput{
 		ApiId:      apiId,
@@ -111,6 +139,7 @@ func enableStageAutoDeploy(apiId *string, stageName *string) {
 	}
 }
 
+// Create stage (API gateway-related)
 func createStage(apiId *string) *string {
 	stageName := new(string)
 	*stageName = "$default"
@@ -129,7 +158,9 @@ func createStage(apiId *string) *string {
 	return stageName
 }
 
+// Create the state machine
 func createStepFunction() *string {
+	// Check if a state machine with the same name is already present
 	lsmi := sfn.ListStateMachinesInput{MaxResults: 1000}
 
 	for {
@@ -152,6 +183,7 @@ func createStepFunction() *string {
 		}
 	}
 
+	// If non-existant, create a new state machine from its AML definition
 	amlDef := getStateMachineDefinition()
 	stateMachine.Definition = &amlDef
 
@@ -165,6 +197,7 @@ func createStepFunction() *string {
 	}
 }
 
+// Create lambdas
 func createLambdas(baseDir string) {
 	for _, lmbd := range lambdas {
 		zip, err := loadFunctionZip(baseDir, *lmbd.FunctionName)
@@ -191,10 +224,16 @@ func createLambdas(baseDir string) {
 	}
 }
 
+/*
+ * This is needed to map the client-made HTTP request to an "arbitrary" AWS resource
+ * HTTP request POST /store --> Amazon API Gateway --> [Internal AWS handling] --> StepFunctions: StartExecution
+ */
 func mergeRouteWithIntegration(apiId *string, sfnArn *string) *string {
 	integration.ApiId = apiId
 	integration.RequestParameters["StateMachineArn"] = *sfnArn
 
+	// search for the integration, if it is already existing the client will
+	// just use it
 	var head string
 	var integOpOut *apigatewayv2.CreateIntegrationOutput
 
@@ -235,6 +274,7 @@ func mergeRouteWithIntegration(apiId *string, sfnArn *string) *string {
 		}
 	}
 
+	// If no integration can be found, create a new one: links API endpoint with state machine by its ARN
 	if !found {
 		var err error
 		integOpOut, err = svc.apigateway.CreateIntegration(dflCtx(), &integration)
@@ -250,6 +290,8 @@ func mergeRouteWithIntegration(apiId *string, sfnArn *string) *string {
 		head, *integOpOut.IntegrationId, integOpOut.ConnectionType,
 		integOpOut.IntegrationType)
 
+	// Integration is "merged" into the HTTP route used by the client application
+	// to "invoke" the state machine and pass the input tuple
 	route.ApiId = apiId
 	myTarget := "integrations/" + *integOpOut.IntegrationId
 	route.Target = &myTarget
@@ -266,10 +308,11 @@ func mergeRouteWithIntegration(apiId *string, sfnArn *string) *string {
 	return routeOpOut.RouteId
 }
 
+// authorizer lambda will be added if and only if authentication is required
 func addAuthorizerLambda() {
 	lambdas = append(lambdas, lambda.CreateFunctionInput{
 		FunctionName:  aws.String("authorizer"),
-		Role:          &iamLabRoleArn,
+		Role:          &iamRoleArn,
 		PackageType:   lmbdtypes.PackageTypeZip,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeProvidedal2023,
@@ -278,6 +321,10 @@ func addAuthorizerLambda() {
 	})
 }
 
+// since it is not a good idea to delete secret storage (it will take 7 days
+// to be able to create a new secret storage with the same name)
+// we are most likely going to update the existing secret storage by its name
+// with the newly-set authentication key
 func createOrUpdateSecret(key *string) {
 	secret.SecretBinary = []byte(*key)
 	csOut, err := svc.secretsmanager.CreateSecret(dflCtx(), &secret)
@@ -300,6 +347,9 @@ func createOrUpdateSecret(key *string) {
 	}
 }
 
+// This authorizer will invoke the lambda "authorizer", which will get the
+// authorization key passed by the client in HTTP headers as "Authorization": "mykey0123",
+// determining if it is correct or not
 func createAuthorizer(apiId *string) *string {
 	authUri := getAuthorizerUri()
 	authorizer.ApiId = apiId
@@ -320,6 +370,8 @@ func createAuthorizer(apiId *string) *string {
 	return caOut.AuthorizerId
 }
 
+// Authorizer can be easily added to the HTTP route which needs authentication
+// No further integration needed, "builtin" support by AWS
 func addAuthorizerToRoute(authorizerId *string, routeId *string) {
 	uri := apigatewayv2.UpdateRouteInput{
 		ApiId:             route.ApiId,
@@ -341,6 +393,7 @@ func addAuthorizerToRoute(authorizerId *string, routeId *string) {
  * AWS delete resources
  */
 
+// Delete API gateway
 func deleteApi(apiId *string) {
 	dai := apigatewayv2.DeleteApiInput{ApiId: apiId}
 	_, err := svc.apigateway.DeleteApi(dflCtx(), &dai)
@@ -351,6 +404,7 @@ func deleteApi(apiId *string) {
 	}
 }
 
+// Delete DynamoDB tables
 func deleteTables() {
 	for _, table := range tables {
 		dti := dynamodb.DeleteTableInput{TableName: table.TableName}
@@ -365,6 +419,8 @@ func deleteTables() {
 	}
 }
 
+// Delete lambdas: if authentication was not enabled during deployment time
+// authorizer lambda deletion will fail, program just goes on...
 func deleteLambdas() {
 	addAuthorizerLambda()
 	for _, lmbd := range lambdas {
@@ -378,6 +434,9 @@ func deleteLambdas() {
 	}
 }
 
+// Delete step function: takes some time to delete this resource
+// If next deployment is made too soon after un-deployment then
+// creation will most likely fail
 func deleteStepFunction() {
 	lsmi := sfn.ListStateMachinesInput{MaxResults: 1000}
 
@@ -413,6 +472,7 @@ func deleteStepFunction() {
 	log.Printf("unable to find sfn %s\n", *stateMachine.Name)
 }
 
+// Delete HTTP routes (along with its authorizer if present)
 func deleteRoutes(apiId *string) {
 	gri := apigatewayv2.GetRoutesInput{
 		ApiId:      apiId,
@@ -448,6 +508,7 @@ func deleteRoutes(apiId *string) {
 	}
 }
 
+// Explicit deletion of integrations with state machine
 func deleteIntegrations(apiId *string) {
 	gii := apigatewayv2.GetIntegrationsInput{
 		ApiId:      apiId,
@@ -484,6 +545,17 @@ func deleteIntegrations(apiId *string) {
 	}
 }
 
+// WARNING: deleting secret on undeployment is not reccomended - minimum AWS time to delete
+//
+//	the cryptographic storage is 7 days - next time you will need to recreate the
+//	crypto-storage you either wait 7 days or change its name
+//
+// BY DEFAULT: this resource will not be deleted on undeployment (on next deployment, just update
+//
+//	the existing storage)
+//
+// YOU CAN ENFORCE DELETING BEHAVIOUR (to avoid costs of maintaining the cryptographic storage)
+// WITH OPTION -s along with -d
 func deleteSecret() {
 	lsi := secretsmanager.ListSecretsInput{
 		Filters: []smtypes.Filter{
@@ -549,6 +621,10 @@ func coreUpdateLambda(name *string, arch *[]lmbdtypes.Architecture, base *string
 	}
 }
 
+// Update one, two, three or all lambdas
+// if authorizer is not already present (auth disabled)
+// attempting to update it or including it in the update
+// will result in fail (program will NOT terminate)
 func updateLambdas(base string, csl string) {
 	if csl != "all" {
 		lambdaNames := strings.Split(csl, ",")
@@ -585,7 +661,7 @@ func updateLambdas(base string, csl string) {
 }
 
 /*
- * Various
+ * Various util functions
  */
 
 func getAuthorizerUri() string {
@@ -608,15 +684,15 @@ func getAuthorizerUri() string {
 		*funArn)
 }
 
-func obtainIamLabRole() {
-	roleInput := iam.GetRoleInput{RoleName: &IAM_LABROLE}
+func obtainIamRole() {
+	roleInput := iam.GetRoleInput{RoleName: aws.String(IAM_ROLE)}
 	ans, err := svc.iam.GetRole(dflCtx(), &roleInput)
 	if err != nil {
 		log.Fatalf("unable to retrieve info about role %s: %v",
 			*roleInput.RoleName, err)
 	}
 
-	iamLabRoleArn = *ans.Role.Arn
+	iamRoleArn = *ans.Role.Arn
 }
 
 func getApiId() (*string, error) {
@@ -849,7 +925,7 @@ func main() {
 		if !cmdline.deleteAll {
 			authRequired := len(cmdline.authorizationKey) > 0
 
-			obtainIamLabRole()
+			obtainIamRole()
 
 			createTables()
 

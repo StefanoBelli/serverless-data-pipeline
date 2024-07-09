@@ -7,6 +7,7 @@ import (
 )
 
 func main() {
+	// Refer to local package flagPhaseFailed (located at ../flagPhaseFailed)
 	fpf.SetTableName("transformationStatus")
 	lambda.Start(fpf.Handler)
 }

@@ -26,6 +26,7 @@ type TupleStoreResponse struct {
 	TransactionId uint64 `json:"transactionId"`
 }
 
+// fields are just unused but could be seen in state machine logs
 type StoreError struct {
 	cause   error
 	userMsg string
@@ -35,15 +36,18 @@ func (se StoreError) Error() string {
 	return fmt.Sprintf("%s: %v", se.userMsg, se.cause)
 }
 
+// If a failure occours, then it is an error (StoreError is assigned to reason 3)
 func erroredResponse(msg string, err error) (TupleStoreResponse, error) {
 	return TupleStoreResponse{},
 		StoreError{cause: err, userMsg: msg}
 }
 
+// This store lambda will only reply good response
 func validResponse() (TupleStoreResponse, error) {
 	return TupleStoreResponse{Success: true}, nil
 }
 
+// final table attrs
 type NycYellowTaxiEntry struct {
 	StoreRequestId       uint64  `dynamodbav:"StoreRequestId"`
 	EntryIdx             int64   `dynamodbav:"EntryIdx"`
@@ -94,6 +98,7 @@ func firstEncounteredError(errors *[]error) error {
 	return nil
 }
 
+// self-explainatory
 func populateEntryByRawTuple(entry *NycYellowTaxiEntry, id uint64, rawTuple *string) error {
 	errs := make([]error, 14)
 
@@ -121,6 +126,9 @@ func populateEntryByRawTuple(entry *NycYellowTaxiEntry, id uint64, rawTuple *str
 	entry.CongestionSurcharge, errs[12] = parseFloat64(&fields[18])
 	entry.AirportFee, errs[13] = parseFloat64(&fields[19])
 
+	// to reduce code size and overhead, since it is VERY unlikely that
+	// this function fails, check only the first encountered error among used
+	// parsing functions that can return an error
 	return firstEncounteredError(&errs)
 }
 
@@ -130,12 +138,14 @@ func handler(e TupleStoreRequest) (TupleStoreResponse, error) {
 		return erroredResponse("unable to load dynamodb service", err)
 	}
 
-	// FAILSIM
+	// FAILSIM referred to dyndbutils.PutInTable
 	if err := failsim.OopsFailed(); err != nil {
 		return erroredResponse("unable to put raw tuple", err)
 	}
 	// FAILSIM
 
+	// Place receiving input raw tuple from previous lambda in my
+	// own support DynamoDB table
 	err = dyndbutils.PutInTable(
 		ddbSvc,
 		dyndbutils.BuildDefaultTupleStatus(e.TransactionId, &e.Tuple),
@@ -145,11 +155,12 @@ func handler(e TupleStoreRequest) (TupleStoreResponse, error) {
 		return erroredResponse("unable to put raw tuple", err)
 	}
 
+	// parse raw tuple and create the final item for the final DynamoDB table
+	// for the entirely-preprocessed tuple
 	nyte := NycYellowTaxiEntry{}
-
 	err = populateEntryByRawTuple(&nyte, e.TransactionId, &e.Tuple)
 
-	// FAILSIM
+	// FAILSIM - if populateEntryByRawTuple DID NOT FAIL, then see if we can let it fail
 	if err == nil {
 		err = failsim.OopsFailed()
 	}
@@ -159,12 +170,15 @@ func handler(e TupleStoreRequest) (TupleStoreResponse, error) {
 		return erroredResponse("unable to populate entry from raw tuple", err)
 	}
 
-	//FAILSIM
+	//FAILSIM - referred to the next dyndbutils.PutInTable
 	if err := failsim.OopsFailed(); err != nil {
 		return erroredResponse("unable to put entry in final table", err)
 	}
 	//FAILSIM
 
+	// THE END OF THE TRANSACTION
+	// PREPROCESSED TUPLE IS PUT INTO THE FINAL DYNAMODB TABLE, QUERYABLE BY
+	// CLIENTS
 	err = dyndbutils.PutInTable(
 		ddbSvc,
 		nyte,
@@ -174,6 +188,7 @@ func handler(e TupleStoreRequest) (TupleStoreResponse, error) {
 		return erroredResponse("unable to put entry in final table", err)
 	}
 
+	// THE END, nothing more to do
 	return validResponse()
 }
 

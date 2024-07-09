@@ -12,11 +12,21 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sfn"
 )
 
+/*
+ * The following two constants may be changed without any repercussions
+ */
 const AWS_REGION = "us-east-1"
+const IAM_ROLE = "LabRole"
 
-var IAM_LABROLE = "LabRole"
-
-var SFN_AML_DEFINITION_FMT = `
+/*
+ * This is the definition of the critical pipeline state machine, format
+ * specifiers are present to allow deployment code to replace them with
+ * lambda function names at runtime.
+ *
+ * Any change to this JSON/AML specification should be done via Amazon's
+ * visual editor
+ */
+const SFN_AML_DEFINITION_FMT = `
 {
   "Comment": "A description of my state machine",
   "StartAt": "Validate",
@@ -321,6 +331,10 @@ var SFN_AML_DEFINITION_FMT = `
 }
 `
 
+/*
+ * DynamoDB tables
+ * Changes in billing mode will not result in any kind of issues
+ */
 var tables = []dynamodb.CreateTableInput{
 	{
 		TableName: aws.String("validationStatus"),
@@ -389,17 +403,26 @@ var tables = []dynamodb.CreateTableInput{
 			},
 			{
 				AttributeName: aws.String("EntryIdx"),
-				KeyType:       ddbtypes.KeyTypeRange,
+				KeyType:       ddbtypes.KeyTypeRange, //sorting key
 			},
 		},
 		BillingMode: ddbtypes.BillingModePayPerRequest,
 	},
 }
 
+/*
+ * Lambda functions to be coordinated via the state machine
+ *
+ * FunctionName and Timeout may be changed without any kind of issue.
+ *
+ * Changing the rest, might result in issues (golang compiler
+ * target arch is x86_64, bootstrap is the name of the executable
+ * which contains the main() and lambda handler functions)
+ */
 var lambdas = []lambda.CreateFunctionInput{
 	{
 		FunctionName:  aws.String("validate"),
-		Role:          &iamLabRoleArn,
+		Role:          &iamRoleArn,
 		PackageType:   lmbdtypes.PackageTypeZip,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeProvidedal2023,
@@ -408,7 +431,7 @@ var lambdas = []lambda.CreateFunctionInput{
 	},
 	{
 		FunctionName:  aws.String("transform"),
-		Role:          &iamLabRoleArn,
+		Role:          &iamRoleArn,
 		PackageType:   lmbdtypes.PackageTypeZip,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeProvidedal2023,
@@ -417,7 +440,7 @@ var lambdas = []lambda.CreateFunctionInput{
 	},
 	{
 		FunctionName:  aws.String("store"),
-		Role:          &iamLabRoleArn,
+		Role:          &iamRoleArn,
 		PackageType:   lmbdtypes.PackageTypeZip,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeProvidedal2023,
@@ -426,7 +449,7 @@ var lambdas = []lambda.CreateFunctionInput{
 	},
 	{
 		FunctionName:  aws.String("flagValidateFailed"),
-		Role:          &iamLabRoleArn,
+		Role:          &iamRoleArn,
 		PackageType:   lmbdtypes.PackageTypeZip,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeProvidedal2023,
@@ -435,7 +458,7 @@ var lambdas = []lambda.CreateFunctionInput{
 	},
 	{
 		FunctionName:  aws.String("flagTransformFailed"),
-		Role:          &iamLabRoleArn,
+		Role:          &iamRoleArn,
 		PackageType:   lmbdtypes.PackageTypeZip,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeProvidedal2023,
@@ -444,7 +467,7 @@ var lambdas = []lambda.CreateFunctionInput{
 	},
 	{
 		FunctionName:  aws.String("flagStoreFailed"),
-		Role:          &iamLabRoleArn,
+		Role:          &iamRoleArn,
 		PackageType:   lmbdtypes.PackageTypeZip,
 		Architectures: []lmbdtypes.Architecture{lmbdtypes.ArchitectureX8664},
 		Runtime:       lmbdtypes.RuntimeProvidedal2023,
@@ -453,36 +476,57 @@ var lambdas = []lambda.CreateFunctionInput{
 	},
 }
 
+/*
+ * State machine name, may be changed without any kind of issue
+ */
 var stateMachine = sfn.CreateStateMachineInput{
 	Name:    aws.String("CriticalDataPipeline"),
-	RoleArn: &iamLabRoleArn,
+	RoleArn: &iamRoleArn,
 }
 
+/*
+ * API gateway
+ *
+ * Name: may be changed without any kind of issue
+ * ProtocolType: cannot be changed
+ */
 var api = apigatewayv2.CreateApiInput{
 	Name:         aws.String("pipeline"),
 	ProtocolType: apitypes.ProtocolTypeHttp,
 }
 
+/*
+ * Do not touch any of the following lines
+ */
 var integration = apigatewayv2.CreateIntegrationInput{
 	Description:          aws.String("CriticalDataPipeline integration"),
 	IntegrationType:      apitypes.IntegrationTypeAwsProxy,
 	IntegrationSubtype:   aws.String("StepFunctions-StartExecution"),
 	PayloadFormatVersion: aws.String("1.0"),
-	CredentialsArn:       &iamLabRoleArn,
+	CredentialsArn:       &iamRoleArn,
 	RequestParameters: map[string]string{
 		"Input": "$request.body",
 	},
 }
 
+/*
+ * Do not touch any of the following lines
+ */
 var route = apigatewayv2.CreateRouteInput{
 	RouteKey: aws.String("POST /store"),
 }
 
+/*
+ * Name can be changed, do not change description
+ */
 var secret = secretsmanager.CreateSecretInput{
 	Name:        aws.String("DataPipelineAuthKey"),
 	Description: aws.String("secret for data pipeline HTTP methods"),
 }
 
+/*
+ * Name may be changed, do not change other fields.
+ */
 var authorizer = apigatewayv2.CreateAuthorizerInput{
 	Name:                           aws.String("DataPipelineAuthorizer"),
 	AuthorizerType:                 apitypes.AuthorizerTypeRequest,
@@ -490,5 +534,5 @@ var authorizer = apigatewayv2.CreateAuthorizerInput{
 	AuthorizerPayloadFormatVersion: aws.String("2.0"),
 	AuthorizerResultTtlInSeconds:   aws.Int32(0),
 	EnableSimpleResponses:          aws.Bool(true),
-	AuthorizerCredentialsArn:       &iamLabRoleArn,
+	AuthorizerCredentialsArn:       &iamRoleArn,
 }

@@ -51,7 +51,7 @@ func validResponse(e *TupleTransformationRequest) (TupleTransformationResponse, 
 func invalidResponse(e *TupleTransformationRequest) (TupleTransformationResponse, error) {
 	return TupleTransformationResponse{
 		Success:       false,
-		Reason:        2,
+		Reason:        2, // <-- Reason code for transform failure
 		TransactionId: e.TransactionId,
 		Tuple:         e.Tuple,
 	}, nil
@@ -79,6 +79,8 @@ func performDataTransformation(rawTuple *string) bool {
 
 	csvCols := strings.Split(*rawTuple, oldCsvCommaSep)
 
+	// the same registering callback mechanism allows
+	// extensible transformations on data
 	for _, columns := range multiColumnTransformers {
 		var cols []*string
 		for _, ei := range columns.idxs {
@@ -90,7 +92,7 @@ func performDataTransformation(rawTuple *string) bool {
 		}
 	}
 
-	//also rejoin by transforming sep. csv char
+	// rejoin by changing separation character
 	*rawTuple = strings.Join(csvCols, newCsvCommaSep)
 	return true
 }
@@ -101,12 +103,14 @@ func handler(e TupleTransformationRequest) (TupleTransformationResponse, error) 
 		return erroredResponse("unable to load dynamodb service", err)
 	}
 
-	// FAILSIM
+	// FAILSIM referred to dyndbutils.PutInTable
 	if err := failsim.OopsFailed(); err != nil {
 		return erroredResponse("unable to put raw tuple", err)
 	}
 	// FAILSIM
 
+	// Place the receiving input tuple from previous lambda
+	// in my own support DynamoDB table
 	err = dyndbutils.PutInTable(
 		ddbSvc,
 		dyndbutils.BuildDefaultTupleStatus(e.TransactionId, &e.Tuple),
@@ -116,6 +120,7 @@ func handler(e TupleTransformationRequest) (TupleTransformationResponse, error) 
 		return erroredResponse("unable to put raw tuple", err)
 	}
 
+	// no Golang "error" could be returned at this point
 	if performDataTransformation(&e.Tuple) && /* FAILSIM */ failsim.OopsFailed() == nil /* FAILSIM */ {
 		return validResponse(&e)
 	} else {
@@ -134,7 +139,7 @@ type MultiColumnTransformer struct {
 
 var multiColumnTransformers = []MultiColumnTransformer{
 	{
-		idxs: []int{1},
+		idxs: []int{1}, // You may apply the same transformer on multiple columns
 		transform: func(col *[]*string) bool {
 			assoc := map[string]string{
 				"1": "Creative Mobile Technologies, LLC",

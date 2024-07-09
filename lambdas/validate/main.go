@@ -29,6 +29,7 @@ type TupleValidationResponse struct {
 	Tuple         string `json:"tuple"`
 }
 
+// returns a JSON object with no Golang "error"
 func validResponse(id uint64, rawTuple *string) (TupleValidationResponse, error) {
 	return TupleValidationResponse{
 		Success:       true,
@@ -38,18 +39,24 @@ func validResponse(id uint64, rawTuple *string) (TupleValidationResponse, error)
 	}, nil
 }
 
+// returns a JSON object with no Golang "error"
 func invalidResponse(id uint64) (TupleValidationResponse, error) {
 	return TupleValidationResponse{
 		Success:       false,
-		Reason:        1,
+		Reason:        1, // <-- Reason code for validate failure
 		TransactionId: id,
 	}, nil
 }
 
+// returns a Golang "error"
 func erroredResponse(msg string, err error) (TupleValidationResponse, error) {
 	return TupleValidationResponse{}, fmt.Errorf("%s: %v", msg, err)
 }
 
+// transactionId is calculated from:
+//   - the specific tuple (like a "weak" hashing algorithm)
+//   - the beginTime which was registered as soon as the lambda handler started
+//   - a random integer obtained via default PRNG (unif. dist. ranging 0..9999)
 func calculateTransactionId(rawTuple *string, unix32BeginTime int64) uint64 {
 	var id uint64 = uint64(unix32BeginTime) + uint64(rand.Intn(10000))
 	for i, c := range *rawTuple {
@@ -61,16 +68,22 @@ func calculateTransactionId(rawTuple *string, unix32BeginTime int64) uint64 {
 
 func fieldChecksAreOk(tuple *string) bool {
 	csvCols := strings.Split(*tuple, CSV_COMMA_SEP)
+	// check expected num of cols separated by its char
 	if len(csvCols) != CSV_NUMCOLS {
 		return false
 	}
 
+	// via a callback registration mechanism,
+	// check if column is valid according to specs of NYC yellow taxis dictionary
+	// https://www.nyc.gov/assets/tlc/downloads/pdf/data_dictionary_trip_records_yellow.pdf
 	for _, column := range singleColumnCheckers {
 		if !column.check(&csvCols[column.idx]) {
 			return false
 		}
 	}
 
+	// check that columns are coherent for a specific constraint
+	// ex. start date < end date
 	for _, columns := range crossColumnCheckers {
 		var kols []*string
 		for _, j := range columns.idxs {
@@ -82,14 +95,21 @@ func fieldChecksAreOk(tuple *string) bool {
 		}
 	}
 
+	// if a check on a column fails but the column is not critical
+	// then it will be replaced with an empty string
+	// hence, the raw tuple string will need rejoining
 	*tuple = strings.Join(csvCols, ",")
 
 	return true
 }
 
 func handler(e TupleValidationRequest) (TupleValidationResponse, error) {
+	// register begin time as soon as possible
 	transactionBeginTime := time.Now().Unix()
 
+	// Trimming space lets lambda able to determine if tuple is empty or not
+	// errored response allows lambda to waste time and money into further
+	// computations
 	fixedTuple := strings.TrimSpace(e.Tuple)
 	if len(fixedTuple) == 0 {
 		return erroredResponse("receiving input",
@@ -101,23 +121,29 @@ func handler(e TupleValidationRequest) (TupleValidationResponse, error) {
 		return erroredResponse("unable to load dynamodb service", err)
 	}
 
+	// calculate unique transaction id
 	transactionId := calculateTransactionId(&e.Tuple, transactionBeginTime)
 
-	// FAILSIM
+	// FAILSIM referred to dyndbutils.PutInTable
 	if err := failsim.OopsFailed(); err != nil {
 		return erroredResponse("unable to put raw table", err)
 	}
 	// FAILSIM
 
+	// *BEFORE* validating the tuple put the side-whitespace-trimmed input tuple
+	// in the DynamoDB "support" table for validation with reason code "success"
+	// (for now)
 	err = dyndbutils.PutInTable(
 		ddbSvc,
 		dyndbutils.BuildDefaultTupleStatus(transactionId, &e.Tuple),
 		&TABLE_NAME)
-
 	if err != nil {
 		return erroredResponse("unable to put raw tuple", err)
 	}
 
+	// now do whatever check you need to do
+	// Recall: NO ERROR RETURNED AT THIS POINT, JUST A JSON OBJECT reporting whether
+	//         tuples are valid or not, and nil error
 	if fieldChecksAreOk(&fixedTuple) {
 		return validResponse(transactionId, &fixedTuple)
 	} else {
@@ -136,11 +162,11 @@ type SingleColumnChecker struct {
 
 var singleColumnCheckers = []SingleColumnChecker{
 	{
-		idx: 0,
-		check: func(s *string) bool {
+		idx: 0, // column to which perform check
+		check: func(s *string) bool { // registered check
 			i, err := strconv.ParseInt(*s, 10, 32)
-			if err != nil || i < 0 {
-				*s = ""
+			if err != nil || i < 0 { // perform specific checks on data
+				*s = "" // non-critical data, allow tuple anyway
 			}
 
 			return true
@@ -162,7 +188,7 @@ var singleColumnCheckers = []SingleColumnChecker{
 		check: func(s *string) bool {
 			i, err := strconv.ParseFloat(*s, 32)
 			if err != nil || i < 1 || i > 5 {
-				return false
+				return false // critical data is wrong, prevent tuple from passing checks
 			}
 
 			return true
@@ -341,7 +367,7 @@ type CrossColumnChecker struct {
 
 var crossColumnCheckers = []CrossColumnChecker{
 	{
-		idxs: []int{2, 3},
+		idxs: []int{2, 3}, // specify the columns which need to adhere to certain constraints
 		check: func(cols *[]*string) bool {
 			layoutDate := "2006-01-02 15:04:05"
 
