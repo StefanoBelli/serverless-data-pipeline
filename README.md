@@ -34,16 +34,20 @@ build.win.bat or build-pkg.win.bat
 ## Second step: deploy the infrastructure
 
 Prerequisite is to have an account with a role named "LabRole" 
-(instructure AWS academy's default IAM role, at least for students) with
+(instructure AWS academy's default IAM role, at least for students, 
+with no possibility to create another one) with
 enough permissions to create all the resources. If such a IAM role has
 a different name on your account it can be changed in deploy/src/config.go
 (change the constant IAM_ROLE, line 19).
 
-You will also need to be able to create resources in "us-east-1" AWS region,
+You will also need to be able to create resources in "us-east-1" 
+(this is one of the few regions if not the ONLY region that can be 
+used with instructure's AWS academy) AWS region,
 as explained above, if this is not the case, the region can be changed in
 deploy/src/config.go (change the constant AWS_REGION, line 18).
 
-Requires recompilation of the deployment program.
+Requires recompilation of the deployment program 
+(just redo the first point of the previous section after changes to the constant)
 
 Now, recover your AWS credentials (base64-encoded secret tokens) by launching
 AWS academy and copying them by clicking on "AWS details" right after the
@@ -86,7 +90,7 @@ of the dataset the injector must resume sending tuples.
 
 NOTE: that on the first time it is being run, injector will download the dataset from my own Google Drive public folder
 
-NOTE: limiting the rate by using --every-ms is strongly reccomended to avoid account deactivation (lots of lambdas running at the same time)
+NOTE: limiting the HTTP request issuing rate by using --every-ms is **strongly** reccomended to avoid account deactivation (lots of lambdas running at the same time)
 
 ### Optional: enabling authentication
 
@@ -123,4 +127,10 @@ This is because it will take 7 days for AWS to delete the encrypted storage,
 period in which this storage will not be usable and you will not be able to recreate 
 a new crypto storage with the same name. However, maintaining whatever AWS resource takes some money, 
 so if you want to delete it anyway use -s options along with -d while passing cmdline options to deployment program.
+
+## See results
+
+Access your own AWS web console and see results of the step function called "CriticalDataPipeline"
+and relative DynamoDB tables "validationStatus", "transformationStatus", "storeStatus" and the final one
+(to be queried by an hypothetical data processing client/consumer) which is "nycYellowTaxis"
 
