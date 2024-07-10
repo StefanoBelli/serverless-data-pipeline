@@ -10,6 +10,7 @@ import (
 	"errors"
 	"os"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
@@ -65,6 +66,7 @@ func updateTuple(dyndb *dynamodb.Client, id uint64, reason int32) error {
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
 		UpdateExpression:          expr.Update(),
+		ConditionExpression:       aws.String("attribute_exists(StoreRequestId)"),
 	})
 
 	return err
