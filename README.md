@@ -33,7 +33,7 @@ build.win.bat or build-pkg.win.bat
 
 ## Second step: deploy the infrastructure
 
-Prerequisite is to have an account with a role named "LabRole" 
+Prerequisite is to have a AWS account with a role named "LabRole" 
 (instructure AWS academy's default IAM role, at least for students, 
 with no possibility to create another one) with
 enough permissions to create all the resources. If such a IAM role has
