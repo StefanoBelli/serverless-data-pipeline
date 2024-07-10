@@ -92,6 +92,12 @@ NOTE: that on the first time it is being run, injector will download the dataset
 
 NOTE: limiting the HTTP request issuing rate by using --every-ms is **strongly** reccomended to avoid account deactivation (lots of lambdas running at the same time)
 
+### AWS console: see results
+
+After running the injector, access your own AWS web console and see results of executing the step function 
+called "CriticalDataPipeline" and relative DynamoDB tables "validationStatus", "transformationStatus", 
+"storeStatus" and the final one (to be queried by an hypothetical data processing client/consumer) which is "nycYellowTaxis"
+
 ### Optional: enabling authentication
 
 When deploying, you may want to use the deploy program with -a option to enable authentication and requiring auth key
@@ -127,10 +133,3 @@ This is because it will take 7 days for AWS to delete the encrypted storage,
 period in which this storage will not be usable and you will not be able to recreate 
 a new crypto storage with the same name. However, maintaining whatever AWS resource takes some money, 
 so if you want to delete it anyway use -s options along with -d while passing cmdline options to deployment program.
-
-## See results
-
-Access your own AWS web console and see results of the step function called "CriticalDataPipeline"
-and relative DynamoDB tables "validationStatus", "transformationStatus", "storeStatus" and the final one
-(to be queried by an hypothetical data processing client/consumer) which is "nycYellowTaxis"
-
