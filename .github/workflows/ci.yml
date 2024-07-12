@@ -4,7 +4,7 @@ on: [push]
 
 jobs:
   build:
-    name: Check build on ${{ matrix.go-version }} on ${{ matrix.os }}
+    name: Check build on golang version ${{ matrix.go-version }} with ${{ matrix.os }} as OS
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
@@ -18,3 +18,9 @@ jobs:
           go-version: ${{ matrix.go-version }}
       - name: Display Go version
         run: go version
+      - name: Build deployment program
+        run: cd deploy && bash build.nix.sh && cd ..
+      - name: Build injector
+        run: cd inject_data && bash build.nix.sh && cd ..
+      - name: Build lambdas
+        run: cd lambdas && bash build-pkg.nix.sh && cd ..
