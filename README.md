@@ -2,8 +2,11 @@
 SDCC project a.y. 2023/2024
 
 ## First step: build whole project
+
+*NOTE: minimum Go version is set to 1.22 (go mod directive), continuous integration builds successfully with version 1.21.x*
+
 In no particular order:
- 
+
  * Build the deployment program
  ~~~
  $ cd deploy
